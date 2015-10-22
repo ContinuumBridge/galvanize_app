@@ -1,0 +1,9 @@
+{
+    "exe": "galvanize_app.py", 
+    "name": "Galvanize App", 
+    "url": "https://github.com/ContinuumBridge/galvanize_app/archive/v0.1.0.tar.gz", 
+    "app_resource": "/api/bridge/v1/app/34", 
+    "version": "0.1.0", 
+    "provider": "ContinuumBridge", 
+    "description": "Galvanize Button App"
+}
