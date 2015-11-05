@@ -13,6 +13,20 @@ from cbcommslib import CbApp, CbClient
 from cbconfig import *
 from twisted.internet import reactor
 
+FUNCTIONS = {
+    "beacon": 0xBE,
+    "woken_up": 0xAA,
+    "ack": 0xAC,
+    "include_req": 0x00,
+    "include_grant": 0x02,
+    "reinclude": 0x04,
+    "config": 0x05,
+    "send_battery": 0x07,
+    "alert": 0xAE,
+    "battery_status": 0xBA
+}
+
+GALVANIZE_ADDRESS = int(os.getenv('CB_GALVANIZE_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30
 CID                 = "CID157"  # Client ID
 GRANT_ADDRESS       = 0xBB00
@@ -29,6 +43,7 @@ class App(CbApp):
         self.id2addr        = {}
         self.addr2id        = {}
         self.maxAddr        = 0
+        self.radioOn        = True
 
         # Super-class init must be called
         CbApp.__init__(self, argv)
@@ -71,50 +86,75 @@ class App(CbApp):
             elif message["function"] == "config":
                 nodeConfig = message["config"]
                 self.cbLog("debug", "Config for node " + str(message["node"]) + ": " + str(json.dumps(nodeConfig, indent=4)))
-                self.cbLog("debug", "m1_l1 " + str(nodeConfig["messages"]["m1"][0]))
-                m1_l1 = struct.pack("HHs", 0x11, len(nodeConfig["messages"]["m1"][0]), str(nodeConfig["messages"]["m1"][0]))
-                self.cbLog("debug", "sending to: " + message["node"])
-                self.sendRadio(self.id2addr[message["node"]], "config", 0, m1_l1)
+                self.cbLog("debug", "m1: " + str(nodeConfig["normalMessage"]))
+                stringLength = len(nodeConfig["normalMessage"])
+                self.cbLog("debug", "m1 length: " + str(stringLength))
+                formatString = "BB" + str(stringLength) + "s"
+                self.cbLog("debug", "formatString: " + formatString)
+                m1 = struct.pack(formatString, 0x11, stringLength, str(nodeConfig["normalMessage"]))
+                hexMessage = m1.encode("hex")
+                self.cbLog("debug", "Sending to node: " + str(hexMessage))
+                self.sendRadio(self.id2addr[message["node"]], "config", 0, m1)
 
     def beacon(self):
-        message = {
-            "id": self.id,
-            "request": "command",
-            "data": {
-                "destination": 0xBBBB,
-                "function": "beacon"
-            }
-        }
-        self.sendMessage(message, self.adaptor)
+        self.sendRadio(0xBBBB, "beacon", 0)
         reactor.callLater(5, self.beacon)
 
-    def onRadioMessage(self, source, function, data):
-        self.cbLog("debug", "onRadioMessage, function: " + function)
-        if function == "include_req":
-            nodeID = struct.unpack("I", data)[0]
-            self.cbLog("debug", "onRadioMessage, include_req, nodeID: " + str(nodeID))
-            msg = {
-                "function": "include_req",
-                "include_req": nodeID
-            }
-            self.client.send(msg)
+    def onRadioMessage(self, message):
+        if self.radioOn:
+            self.cbLog("debug", "onRadioMessage")
+            destination = struct.unpack(">H", message[0:2])[0]
+            self.cbLog("debug", "Rx: destination: " + str("{0:#0{1}X}".format(destination,6)))
+            if destination == GALVANIZE_ADDRESS:
+                source, hexFunction, length = struct.unpack(">HBB", message[2:6])
+                function = (key for key,value in FUNCTIONS.items() if value==hexFunction).next()
+                #hexMessage = message.encode("hex")
+                #self.cbLog("debug", "hex message after decode: " + str(hexMessage))
+                self.cbLog("debug", "source: " + str("{0:#0{1}X}".format(source,6)))
+                self.cbLog("debug", "Rx: function: " + function)
+                self.cbLog("debug", "Rx: length: " + str(length))
+
+                if function == "include_req":
+                    payload = message[6:10]
+                    hexPayload = payload.encode("hex")
+                    self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
+                    nodeID = struct.unpack("I", payload)[0]
+                    self.cbLog("debug", "onRadioMessage, include_req, nodeID: " + str(nodeID))
+                    msg = {
+                        "function": "include_req",
+                        "include_req": nodeID
+                    }
+                    self.client.send(msg)
 
     def sendRadio(self, destination, function, wakeupInterval, data = None):
-        #if self.sending:
-        #    self.cbLog("warning", "Could not send " + function + " message because another message is being sent")
-        #    return
-        msg= {
-            "id": self.id,
-            "request": "command",
-            "data": {
-                "destination": destination,
-                "function": function,
-                "wakeup_interval": wakeupInterval
+        if True:
+        #try:
+            length = 6
+            if function != "beacon":
+                length += 2
+            if data:
+                length += len(data)
+                #self.cbLog("debug", "data length: " + str(length))
+            m = ""
+            m += struct.pack(">H", destination)
+            m += struct.pack(">H", GALVANIZE_ADDRESS)
+            m+= struct.pack("B", FUNCTIONS[function])
+            m+= struct.pack("B", length)
+            if function != "beacon":
+                m+= struct.pack(">H", wakeupInterval)
+            #self.cbLog("debug", "length: " +  str(length))
+            if data:
+                m += data
+            hexPayload = m.encode("hex")
+            self.cbLog("debug", "Tx: sending: " + str(hexPayload))
+            msg= {
+                "id": self.id,
+                "request": "command",
+                "data": base64.b64encode(m)
             }
-        }
-        if data:
-            msg["data"]["data"] = base64.b64encode(data)
-        self.sendMessage(msg, self.adaptor)
+            self.sendMessage(msg, self.adaptor)
+        #except Exception as ex:
+        #    self.cbLog("warning", "Problem formatting message. Exception: " + str(type(ex)) + ", " + str(ex.args))
 
     def onAdaptorService(self, message):
         #self.cbLog("debug", "onAdaptorService, message: " + str(message))
@@ -136,8 +176,7 @@ class App(CbApp):
     def onAdaptorData(self, message):
         self.cbLog("debug", "onAdaptorData, message: " + str(message))
         if message["characteristic"] == "galvanize_button":
-            self.cbLog("debug", "onAdaptorData, length: " + str(len(base64.b64decode(message["data"]["data"]))))
-            self.onRadioMessage(message["data"]["source"], message["data"]["function"], base64.b64decode(message["data"]["data"]))
+            self.onRadioMessage(base64.b64decode(message["data"]))
 
     def readLocalConfig(self):
         global config
