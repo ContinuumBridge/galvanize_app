@@ -14,17 +14,23 @@ from cbconfig import *
 from twisted.internet import reactor
 
 FUNCTIONS = {
-    "beacon": 0xBE,
-    "woken_up": 0xAA,
-    "ack": 0xAC,
     "include_req": 0x00,
+    "s_include_req": 0x01,
     "include_grant": 0x02,
     "reinclude": 0x04,
     "config": 0x05,
-    "send_battery": 0x07,
-    "alert": 0xAE,
-    "battery_status": 0xBA
+    "send_battery": 0x06,
+    "alert": 0x09,
+    "woken_up": 0x07,
+    "ack": 0x08,
+    "beacon": 0x0A
 }
+ALERTS = {
+    0x0000: "pressed",
+    0x0100: "cleared",
+    0x0200: "battery"
+}
+
 
 GALVANIZE_ADDRESS = int(os.getenv('CB_GALVANIZE_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30
@@ -44,6 +50,7 @@ class App(CbApp):
         self.addr2id        = {}
         self.maxAddr        = 0
         self.radioOn        = True
+        self.beaconTime     = 0
 
         # Super-class init must be called
         CbApp.__init__(self, argv)
@@ -79,9 +86,11 @@ class App(CbApp):
                     del(self.id2addr[nodeID])
                 self.maxAddr += 1
                 self.id2addr[nodeID] = self.maxAddr
+                self.cbLog("debug", "id2addr: " + str(self.id2addr))
                 self.addr2id[self.maxAddr] = nodeID
+                self.cbLog("debug", "addr2id: " + str(self.addr2id))
                 wakeupInterval = 180
-                data = struct.pack("IH", nodeID, self.maxAddr)
+                data = struct.pack(">IH", nodeID, self.maxAddr)
                 self.sendRadio(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
             elif message["function"] == "config":
                 nodeConfig = message["config"]
@@ -99,6 +108,7 @@ class App(CbApp):
     def beacon(self):
         self.sendRadio(0xBBBB, "beacon", 0)
         reactor.callLater(5, self.beacon)
+        self.beaconTime = time.time()
 
     def onRadioMessage(self, message):
         if self.radioOn:
@@ -125,6 +135,19 @@ class App(CbApp):
                         "include_req": nodeID
                     }
                     self.client.send(msg)
+                elif function == "alert":
+                    payload = message[6:8]
+                    alertType = ALERTS[struct.unpack(">H", payload)[0]]
+                    self.cbLog("debug", "onRadioMessage, alert, type: " + str(alertType))
+                    msg = {
+                        "function": "alert",
+                        "type": alertType,
+                        "source": self.addr2id[source]
+                    }
+                    self.client.send(msg)
+                    self.sendRadio(source, "ack", 10)
+                else:
+                    self.sendRadio(source, "ack", 0)
 
     def sendRadio(self, destination, function, wakeupInterval, data = None):
         if True:
