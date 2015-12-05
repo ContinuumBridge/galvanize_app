@@ -30,7 +30,11 @@ ALERTS = {
     0x0100: "cleared",
     0x0200: "battery"
 }
-
+MESSAGE_NAMES = (
+    "normalMessage",
+    "pressedMessage",
+    "overrideMessage"
+)
 
 GALVANIZE_ADDRESS = int(os.getenv('CB_GALVANIZE_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30
@@ -50,7 +54,7 @@ class App(CbApp):
         self.maxAddr        = 0
         self.radioOn        = True
         self.beaconTime     = 0
-        self.radioQueue     = []
+        self.messageQueue   = []
 
         # Super-class init must be called
         CbApp.__init__(self, argv)
@@ -61,6 +65,42 @@ class App(CbApp):
                "status": "state",
                "state": self.state}
         self.sendManagerMessage(msg)
+
+    def save(self):
+        state = {
+            "id2addr": self.id2addr,
+            "addr2id": self.addr2id,
+            "maxAddr": self.maxAddr,
+            "waiting": self.waiting
+        }
+        try:
+            with open(self.saveFile, 'w') as f:
+                json.dump(state, f)
+                self.cbLog("debug", "saving state:: " + str(json.dumps(state, indent=4)))
+        except Exception as ex:
+            self.cbLog("warning", "Problem saving state. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+
+    def loadSaved(self):
+        try:
+            if os.path.isfile(self.saveFile):
+                with open(self.saveFile, 'r') as f:
+                    state = json.load(f)
+                self.cbLog("debug", "Loaded saved state: " + str(json.dumps(state, indent=4)))
+                self.id2addr = state["id2addr"]
+                self.addr2id = state["addr2id"]
+                self.maxAddr = state["maxAddr"]
+                self.waiting = state["waiting"]
+        except Exception as ex:
+            self.cbLog("warning", "Problem loading saved state. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+        finally:
+            try:
+                os.remove(self.saveFile)
+                self.cbLog("debug", "deleted saved state file")
+            except Exception as ex:
+                self.cbLog("debug", "Cannot remove saved state file. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+
+    def onStop(self):
+        self.save()
 
     def reportRSSI(self, rssi):
         msg = {"id": self.id,
@@ -97,11 +137,20 @@ class App(CbApp):
                 nodeConfig = message["config"]
                 self.cbLog("debug", "Config for node " + str(message["node"]) + ": " + str(json.dumps(nodeConfig, indent=4)))
                 self.cbLog("debug", "m1: " + str(nodeConfig["normalMessage"]))
-                for m in ("normalMessage", "pressedMessage", "overrideMessage"):
-                    stringLength = len(nodeConfig[m])
-                    self.cbLog("debug", "string length: " + str(stringLength))
-                    formatString = "BB" + str(stringLength) + "s"
-                    formatMessage = struct.pack(formatString, 0x11, stringLength, str(nodeConfig[m]))
+                for m in MESSAGE_NAMES: 
+                    lines = nodeConfig[m].split("\n")
+                    for l in lines:
+                        stringLength = len(l)
+                        code = (MESSAGE_NAMES.index(m)+1)<<4 | (lines.index(l)+1)
+                        self.cbLog("debug", "onClientMessage, line: " + l + ", code: " + str(hex(code)))
+                        formatString = "BB" + str(stringLength) + "s"
+                        formatMessage = struct.pack(formatString, code, stringLength, str(l))
+                        self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
+                        msg = self.formatRadioMessage(self.id2addr[message["node"]], "config", 0, formatMessage)
+                        self.queueRadio(msg, self.id2addr[message["node"]], "config")
+                    code = 0xf0 | (MESSAGE_NAMES.index(m)+1)
+                    fontAndNumber = 0x10 | (len(lines))
+                    formatMessage = struct.pack("BB", code, fontAndNumber)
                     self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
                     msg = self.formatRadioMessage(self.id2addr[message["node"]], "config", 0, formatMessage)
                     self.queueRadio(msg, self.id2addr[message["node"]], "config")
@@ -144,12 +193,12 @@ class App(CbApp):
                         "source": self.addr2id[source]
                     }
                     self.client.send(msg)
-                    msg = self.formatRadioMessage(source, "ack", 10)
-                    self.queueRadio(msg, source, function)
+                    msg = self.formatRadioMessage(source, "ack", 0)
+                    self.queueRadio(msg, source, "ack")
                 elif function == "woken_up":
                     self.cbLog("debug", "onRadioMessage, woken_up")
-                    msg = self.formatRadioMessage(source, "ack", 0)
-                    self.queueRadio(msg, source, function)
+                    msg = self.formatRadioMessage(source, "ack", 60)
+                    self.queueRadio(msg, source, "ack")
                 elif function == "ack":
                     self.onAck(source)
                 else:
@@ -157,11 +206,11 @@ class App(CbApp):
 
     def onAck(self, source):
         self.cbLog("debug", "onAck, source: " + str("{0:#0{1}x}".format(source,6)))
-        self.cbLog("debug", "onAck, radioQueue: " + str(json.dumps(self.radioQueue, indent=4)))
-        for m in list(self.radioQueue):
+        self.cbLog("debug", "onAck, messageQueue: " + str(json.dumps(self.messageQueue, indent=4)))
+        for m in list(self.messageQueue):
             if m["destination"] == source:
                 self.cbLog("debug", "onAck, removing message: " + str(m))
-                self.radioQueue.remove(m)
+                self.messageQueue.remove(m)
                 break
 
     def beacon(self):
@@ -175,13 +224,16 @@ class App(CbApp):
     def sendQueued(self):
         sentTo = []
         now = time.time()
-        for m in self.radioQueue:
+        for m in list(self.messageQueue):
             if m["destination"] not in sentTo:
                 if now - m["sentTime"] > 15:
-                    #self.cbLog("debug", "sendQueued: Tx: " + str(m))
+                    self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
                     self.sendMessage(m["message"], self.adaptor)
-                    m["sentTime"] = now
-                    m["attempt"] += 1
+                    if m["function"] == "ack":  # Only send an ack once
+                        self.messageQueue.remove(m)
+                    else:
+                        m["sentTime"] = now
+                        m["attempt"] += 1
                     sentTo.append(m["destination"])
 
     def formatRadioMessage(self, destination, function, wakeupInterval, data = None):
@@ -223,7 +275,7 @@ class App(CbApp):
             "attempt": 0,
             "sentTime": 0
         }
-        self.radioQueue.append(toQueue)
+        self.messageQueue.append(toQueue)
 
     def onAdaptorService(self, message):
         #self.cbLog("debug", "onAdaptorService, message: " + str(message))
@@ -264,6 +316,8 @@ class App(CbApp):
         self.client.onClientMessage = self.onClientMessage
         self.client.sendMessage = self.sendMessage
         self.client.cbLog = self.cbLog
+        self.saveFile = CB_CONFIG_DIR + self.id + ".savestate"
+        self.loadSaved()
         reactor.callLater(CHECK_INTERVAL, self.checkConnected)
         self.setState("starting")
 
