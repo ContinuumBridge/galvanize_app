@@ -33,13 +33,23 @@ ALERTS = {
 MESSAGE_NAMES = (
     "normalMessage",
     "pressedMessage",
-    "overrideMessage"
+    "overrideMessage",
+    "override"
 )
+
+Y_STARTS = (
+    (32, 0, 0 ,0, 0),
+    (16, 50, 0, 0, 0),
+    (5, 32, 61, 0, 0),
+    (4, 26, 48, 70, 0),
+    (0, 20, 40, 60, 80)
+);
 
 GALVANIZE_ADDRESS = int(os.getenv('CB_GALVANIZE_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30
-CID                 = "CID157"  # Client ID
+CID                 = "CID157"           # Client ID
 GRANT_ADDRESS       = 0xBB00
+NORMAL_WAKEUP       = 60                 # How long node should sleep for, seconds/2
 config              = {
                         "nodes": [ ]
 }
@@ -55,6 +65,7 @@ class App(CbApp):
         self.radioOn        = True
         self.beaconTime     = 0
         self.messageQueue   = []
+        self.nodeConfig     = {} 
 
         # Super-class init must be called
         CbApp.__init__(self, argv)
@@ -118,42 +129,74 @@ class App(CbApp):
         self.client.receive(message)
 
     def onClientMessage(self, message):
-        self.cbLog("debug", "onClientMessage, message: " + str(json.dumps(message, indent=4)))
-        if "function" in message:
-            if message["function"] == "include_grant":
-                nodeID = message["node"]
-                if nodeID in self.id2addr:
-                    del(self.id2addr[nodeID])
-                self.maxAddr += 1
-                self.id2addr[nodeID] = self.maxAddr
-                self.cbLog("debug", "id2addr: " + str(self.id2addr))
-                self.addr2id[self.maxAddr] = nodeID
-                self.cbLog("debug", "addr2id: " + str(self.addr2id))
-                wakeupInterval = 180
-                data = struct.pack(">IH", nodeID, self.maxAddr)
-                msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
-                self.queueRadio(msg, self.maxAddr, "include_grant")
-            elif message["function"] == "config":
-                nodeConfig = message["config"]
-                self.cbLog("debug", "Config for node " + str(message["node"]) + ": " + str(json.dumps(nodeConfig, indent=4)))
-                self.cbLog("debug", "m1: " + str(nodeConfig["normalMessage"]))
-                for m in MESSAGE_NAMES: 
-                    lines = nodeConfig[m].split("\n")
-                    for l in lines:
-                        stringLength = len(l)
-                        code = (MESSAGE_NAMES.index(m)+1)<<4 | (lines.index(l)+1)
-                        self.cbLog("debug", "onClientMessage, line: " + l + ", code: " + str(hex(code)))
-                        formatString = "BB" + str(stringLength) + "s"
-                        formatMessage = struct.pack(formatString, code, stringLength, str(l))
-                        self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
-                        msg = self.formatRadioMessage(self.id2addr[message["node"]], "config", 0, formatMessage)
-                        self.queueRadio(msg, self.id2addr[message["node"]], "config")
-                    code = 0xf0 | (MESSAGE_NAMES.index(m)+1)
-                    fontAndNumber = 0x10 | (len(lines))
-                    formatMessage = struct.pack("BB", code, fontAndNumber)
-                    self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
-                    msg = self.formatRadioMessage(self.id2addr[message["node"]], "config", 0, formatMessage)
-                    self.queueRadio(msg, self.id2addr[message["node"]], "config")
+        try:
+            self.cbLog("debug", "onClientMessage, message: " + str(json.dumps(message, indent=4)))
+            if "function" in message:
+                if message["function"] == "include_grant":
+                    nodeID = message["node"]
+                    if nodeID not in self.id2addr:
+                        self.maxAddr += 1
+                        self.id2addr[nodeID] = self.maxAddr
+                        self.cbLog("debug", "id2addr: " + str(self.id2addr))
+                        self.addr2id[self.maxAddr] = nodeID
+                        self.cbLog("debug", "addr2id: " + str(self.addr2id))
+                    data = struct.pack(">IH", nodeID, self.maxAddr)
+                    msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
+                    self.queueRadio(msg, self.maxAddr, "include_grant")
+                elif message["function"] == "config":
+                    self.cbLog("debug", "onClientMessage, id2addr: " + str(self.id2addr))
+                    self.cbLog("debug", "onClientMessage, addr2id: " + str(self.addr2id))
+                    self.cbLog("debug", "onClientMessage, message[node]: " + str(message["node"]))
+                    self.cbLog("debug", "onClientMessage, message[config]: " + str(json.dumps(message["config"], indent=4)))
+                    self.nodeConfig[self.id2addr[int(message["node"])]] = message["config"]
+                    self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
+        except Exception as ex:
+            self.cbLog("warning", "onClientMessage exception. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+
+    def sendConfig(self, nodeAddr):
+        formatMessage = ""
+        messageCount = 0
+        override = False
+        # If there is already config in the message queue for this node, delete it as new config will replace it
+        for m in list(self.messageQueue):
+            if m["destination"] == nodeAddr:
+                del(self.messageQueue[m])
+        for m in MESSAGE_NAMES:
+            messageCount += 1
+            self.cbLog("debug", "in m loop, m: " + m)
+            if m == "normalMessage":
+                formatMessage = struct.pack("cBcBcB", "S", 4, "R", 0, "F", 2)
+            elif m == "pressedMessage":
+                formatMessage = struct.pack("cBcBcB", "S", 5, "R", 0, "F", 2)
+            elif m == "overrideMessage":
+                formatMessage = struct.pack("cBcBcB", "S", 6, "R", 0, "F", 2)
+            elif m == "override":
+                override = True
+                if self.nodeConfig[nodeAddr][m] == True:
+                    formatMessage = struct.pack("cB", "C", 1)
+                else:
+                    formatMessage = struct.pack("cB", "C", 0)
+            if not override:
+                lines = self.nodeConfig[nodeAddr][m].split("\n")
+                numLines = len(lines)
+                for l in lines:
+                    self.cbLog("debug", "sendConfig, line:: " + str(l))
+                    stringLength = len(l) + 1
+                    y_start =  Y_STARTS[numLines-1][lines.index(l)]
+                    self.cbLog("debug", "sendConfig, y_start: " + str(y_start))
+                    formatString = "cBcB" + str(stringLength) + "sc"
+                    segment = struct.pack(formatString, "Y", y_start, "C", stringLength, str(l), "\00")
+                    formatMessage += segment
+                segment = struct.pack("cc", "E", "S") 
+                formatMessage += segment
+            self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
+            if messageCount == len(MESSAGE_NAMES):
+                wakeup = NORMAL_WAKEUP
+            else:
+                wakeup = 0
+            msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
+            self.queueRadio(msg, nodeAddr, "config")
+        del(self.nodeConfig[nodeAddr])
 
     def onRadioMessage(self, message):
         if self.radioOn:
@@ -173,10 +216,10 @@ class App(CbApp):
                 self.cbLog("debug", "Rx: length: " + str(length))
 
                 if function == "include_req":
-                    payload = message[6:10]
+                    payload = message[10:14]
                     hexPayload = payload.encode("hex")
                     self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
-                    nodeID = struct.unpack("I", payload)[0]
+                    nodeID = struct.unpack(">I", payload)[0]
                     self.cbLog("debug", "onRadioMessage, include_req, nodeID: " + str(nodeID))
                     msg = {
                         "function": "include_req",
@@ -184,25 +227,43 @@ class App(CbApp):
                     }
                     self.client.send(msg)
                 elif function == "alert":
-                    payload = message[6:8]
+                    payload = message[10:12]
                     alertType = ALERTS[struct.unpack(">H", payload)[0]]
                     self.cbLog("debug", "onRadioMessage, alert, type: " + str(alertType))
                     msg = {
                         "function": "alert",
                         "type": alertType,
+                        "signal": 5, 
                         "source": self.addr2id[source]
                     }
                     self.client.send(msg)
-                    msg = self.formatRadioMessage(source, "ack", 0)
+                    msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
                     self.queueRadio(msg, source, "ack")
                 elif function == "woken_up":
                     self.cbLog("debug", "onRadioMessage, woken_up")
-                    msg = self.formatRadioMessage(source, "ack", 60)
+                    msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
                     self.queueRadio(msg, source, "ack")
+                    msg = {
+                        "function": "woken_up",
+                        "signal": 5, 
+                        "source": self.addr2id[source]
+                    }
+                    self.client.send(msg)
                 elif function == "ack":
                     self.onAck(source)
                 else:
                     self.cbLog("warning", "onRadioMessage, undefined message, source " + str(source) + ", function: " + function)
+
+    def setWakeup(self, nodeAddr):
+        wakeup = NORMAL_WAKEUP
+        if nodeAddr in self.nodeConfig:
+            wakeup = 0;
+            reactor.callLater(5, self.sendConfig, nodeAddr)
+        else:
+            for m in self.messageQueue:
+                if m["destination"] == nodeAddr:
+                    wakeup = 0;
+        return wakeup
 
     def onAck(self, source):
         self.cbLog("debug", "onAck, source: " + str("{0:#0{1}x}".format(source,6)))
@@ -217,40 +278,47 @@ class App(CbApp):
         #self.cbLog("debug", "beacon")
         msg = self.formatRadioMessage(0xBBBB, "beacon", 0)
         self.sendMessage(msg, self.adaptor)
-        reactor.callLater(3, self.sendQueued)
-        reactor.callLater(5, self.beacon)
+        reactor.callLater(2, self.sendQueued)
+        reactor.callLater(4, self.beacon)
         self.beaconTime = time.time()
 
     def sendQueued(self):
         sentTo = []
         now = time.time()
+        sentLength = 0
         for m in list(self.messageQueue):
-            if m["destination"] not in sentTo:
-                if now - m["sentTime"] > 15:
-                    self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
-                    self.sendMessage(m["message"], self.adaptor)
-                    if m["function"] == "ack":  # Only send an ack once
-                        self.messageQueue.remove(m)
-                    else:
-                        m["sentTime"] = now
-                        m["attempt"] += 1
-                    sentTo.append(m["destination"])
+            if sentLength < 240:   # Send max of 240 bytes in a frame
+                if m["destination"] not in sentTo:
+                    if now - m["sentTime"] > 12:
+                        self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
+                        self.sendMessage(m["message"], self.adaptor)
+                        if m["function"] == "ack":  # Only send an ack once
+                            self.messageQueue.remove(m)
+                        else:
+                            m["sentTime"] = now
+                            m["attempt"] += 1
+                        sentTo.append(m["destination"])
+                        sentLength += len(m["message"])
+                        self.cbLog("debug", "sendQueued, sentLength: " + str(sentLength))
 
     def formatRadioMessage(self, destination, function, wakeupInterval, data = None):
         if True:
         #try:
-            length = 6
+            timeStamp = 0x00000000
             if function != "beacon":
-                length += 2
+                length = 4
+            else:
+                length = 10
             if data:
                 length += len(data)
                 #self.cbLog("debug", "data length: " + str(length))
             m = ""
             m += struct.pack(">H", destination)
             m += struct.pack(">H", GALVANIZE_ADDRESS)
-            m+= struct.pack("B", FUNCTIONS[function])
-            m+= struct.pack("B", length)
             if function != "beacon":
+                m+= struct.pack("B", FUNCTIONS[function])
+                m+= struct.pack("B", length)
+                m+= struct.pack("I", timeStamp)
                 m+= struct.pack(">H", wakeupInterval)
                 self.cbLog("debug", "formatRadioMessage, wakeupInterval: " +  str(wakeupInterval))
             #self.cbLog("debug", "length: " +  str(length))
