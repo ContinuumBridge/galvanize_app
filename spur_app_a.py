@@ -26,8 +26,10 @@ FUNCTIONS = {
     "beacon": 0x0A
 }
 ALERTS = {
-    0x0000: "pressed",
-    0x0100: "cleared",
+    0x0000: "left_short",
+    0x0001: "right_short",
+    0x0100: "left_long",
+    0x0101: "right_long",
     0x0200: "battery"
 }
 MESSAGE_NAMES = (
@@ -209,7 +211,7 @@ class App(CbApp):
                     function = "undefined"
                 #hexMessage = message.encode("hex")
                 #self.cbLog("debug", "hex message after decode: " + str(hexMessage))
-                self.cbLog("debug", "Rx: " + function + " from: " + str("{0:#0{1}x}".format(source,6)))
+                self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
 
                 if function == "include_req":
                     payload = message[10:14]
@@ -284,8 +286,8 @@ class App(CbApp):
         #self.cbLog("debug", "beacon")
         msg = self.formatRadioMessage(0xBBBB, "beacon", 0)
         self.sendMessage(msg, self.adaptor)
-        reactor.callLater(2.1, self.sendQueued)
-        reactor.callLater(4, self.beacon)
+        reactor.callLater(1.1, self.sendQueued)
+        reactor.callLater(2, self.beacon)
 
     def sendQueued(self):
         now = time.time()
@@ -293,7 +295,7 @@ class App(CbApp):
         sentAck = []
         for m in list(self.messageQueue):
             self.cbLog("debug", "sendQueued: messageQueue: " + str(m["destination"]) + ", " + m["function"] + ", sentAck: " + str(sentAck))
-            if sentLength < 240:   # Send max of 240 bytes in a frame
+            if sentLength < 120:   # Send max of 120 bytes in a frame
                 if m["function"] == "ack":
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
                     self.sendMessage(m["message"], self.adaptor)
