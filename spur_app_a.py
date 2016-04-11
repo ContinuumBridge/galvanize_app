@@ -51,7 +51,7 @@ SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30
 CID                 = "CID157"           # Client ID
 GRANT_ADDRESS       = 0xBB00
-NORMAL_WAKEUP       = 60                 # How long node should sleep for, seconds/2
+NORMAL_WAKEUP       = 300                # How long node should sleep for, seconds/2
 config              = {
                         "nodes": [ ]
 }
