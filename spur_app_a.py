@@ -23,14 +23,15 @@ FUNCTIONS = {
     "alert": 0x09,
     "woken_up": 0x07,
     "ack": 0x08,
-    "beacon": 0x0A
+    "beacon": 0x0A,
+    "start": 0x0B
 }
 ALERTS = {
     0x0000: "left_short",
     0x0001: "right_short",
-    0x0100: "left_long",
-    0x0101: "right_long",
-    0x0200: "battery"
+    0x0002: "left_long",
+    0x0003: "right_long",
+    0x0008: "battery"
 }
 MESSAGE_NAMES = (
     "normalMessage",
@@ -68,6 +69,7 @@ class App(CbApp):
         self.sentTo         = []
         self.nodeConfig     = {} 
         self.beaconCalled   = 0
+        self.including      = []
 
         # Super-class init must be called
         CbApp.__init__(self, argv)
@@ -159,39 +161,51 @@ class App(CbApp):
         formatMessage = ""
         messageCount = 0
         override = False
-        for m in MESSAGE_NAMES:
-            if m in self.nodeConfig[nodeAddr]:
-                messageCount += 1
-                self.cbLog("debug", "in m loop, m: " + m)
-                if m == "normalMessage":
-                    formatMessage = struct.pack("cBcBcB", "S", 4, "R", 0, "F", 2)
-                elif m == "pressedMessage":
-                    formatMessage = struct.pack("cBcBcB", "S", 5, "R", 0, "F", 2)
-                elif m == "overrideMessage":
-                    formatMessage = struct.pack("cBcBcB", "S", 6, "R", 0, "F", 2)
-                elif m == "override":
-                    override = True
-                    if self.nodeConfig[nodeAddr][m] == True:
-                        formatMessage = struct.pack("cB", "C", 1)
-                    else:
-                        formatMessage = struct.pack("cB", "C", 0)
-                if not override:
-                    lines = self.nodeConfig[nodeAddr][m].split("\n")
-                    numLines = len(lines)
-                    for l in lines:
-                        self.cbLog("debug", "sendConfig, line:: " + str(l))
-                        stringLength = len(l) + 1
-                        y_start =  Y_STARTS[numLines-1][lines.index(l)]
-                        self.cbLog("debug", "sendConfig, y_start: " + str(y_start))
-                        formatString = "cBcB" + str(stringLength) + "sc"
-                        segment = struct.pack(formatString, "Y", y_start, "C", stringLength, str(l), "\00")
-                        formatMessage += segment
-                    segment = struct.pack("cc", "E", "S") 
+        for m in self.nodeConfig[nodeAddr]:
+            messageCount += 1
+            self.cbLog("debug", "in m loop, m: " + m)
+            aMessage = False
+            if m == "normalMessage":
+                formatMessage = struct.pack("cBcBcB", "S", 4, "R", 0, "F", 2)
+                aMessage = True
+            elif m == "pressedMessage":
+                formatMessage = struct.pack("cBcBcB", "S", 5, "R", 0, "F", 2)
+                aMessage = True
+            elif m == "overrideMessage":
+                formatMessage = struct.pack("cBcBcB", "S", 6, "R", 0, "F", 2)
+                aMessage = True
+            elif m[0] == "S":
+                s = self.nodeConfig[nodeAddr][m]
+                formatMessage = struct.pack("cBBBBBBBBBBBBBBBB", "M", s["state"], s["display"], s["alert"], s["left-double"], \
+                    s["left-single"], 0xFF, 0xFF, s["right-single"], s["right-double"], s["message-value"], s["message-state"], \
+                    s["wait-value"], s["wait-state"], 0xFF, 0xFF, 0xFF)
+            elif m == "override":
+                override = True
+                if self.nodeConfig[nodeAddr][m] == True:
+                    formatMessage = struct.pack("cB", "C", 1)
+                else:
+                    formatMessage = struct.pack("cB", "C", 0)
+            if aMessage:
+                lines = self.nodeConfig[nodeAddr][m].split("\n")
+                numLines = len(lines)
+                for l in lines:
+                    self.cbLog("debug", "sendConfig, line:: " + str(l))
+                    stringLength = len(l) + 1
+                    y_start =  Y_STARTS[numLines-1][lines.index(l)]
+                    self.cbLog("debug", "sendConfig, y_start: " + str(y_start))
+                    formatString = "cBcB" + str(stringLength) + "sc"
+                    segment = struct.pack(formatString, "Y", y_start, "C", stringLength, str(l), "\00")
                     formatMessage += segment
-                self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
-                wakeup = 0
-                msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
-                self.queueRadio(msg, nodeAddr, "config")
+                segment = struct.pack("cc", "E", "S") 
+                formatMessage += segment
+            self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
+            wakeup = 0
+            msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
+            self.queueRadio(msg, nodeAddr, "config")
+        nodeID = self.addr2id[nodeAddr]
+        if nodeID in self.including:
+            self.queueRadio(msg, nodeAddr, "start")
+            self.including.remove(nodeID)
         del(self.nodeConfig[nodeAddr])
 
     def onRadioMessage(self, message):
@@ -220,6 +234,7 @@ class App(CbApp):
                         "include_req": nodeID
                     }
                     self.client.send(msg)
+                    self.including.append(nodeID)
                 elif function == "alert":
                     payload = message[10:12]
                     alertType = ALERTS[struct.unpack(">H", payload)[0]]
