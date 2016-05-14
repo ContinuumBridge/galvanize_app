@@ -41,9 +41,9 @@ MESSAGE_NAMES = (
 )
 
 Y_STARTS = (
-    (32, 0, 0 ,0, 0),
-    (16, 50, 0, 0, 0),
-    (5, 32, 61, 0, 0),
+    (38, 0, 0 ,0, 0),
+    (18, 56, 0, 0, 0),
+    (10, 40, 70, 0, 0),
     (4, 26, 48, 70, 0),
     (0, 20, 40, 60, 80)
 );
@@ -160,41 +160,103 @@ class App(CbApp):
     def sendConfig(self, nodeAddr):
         formatMessage = ""
         messageCount = 0
-        override = False
         for m in self.nodeConfig[nodeAddr]:
             messageCount += 1
             self.cbLog("debug", "in m loop, m: " + m)
             aMessage = False
             if m == "normalMessage":
-                formatMessage = struct.pack("cBcBcB", "S", 4, "R", 0, "F", 2)
+                formatMessage = struct.pack("cBcBcB", "S", 1, "R", 0, "F", 2)
                 aMessage = True
             elif m == "pressedMessage":
-                formatMessage = struct.pack("cBcBcB", "S", 5, "R", 0, "F", 2)
+                formatMessage = struct.pack("cBcBcB", "S", 2, "R", 0, "F", 2)
                 aMessage = True
             elif m == "overrideMessage":
-                formatMessage = struct.pack("cBcBcB", "S", 6, "R", 0, "F", 2)
+                formatMessage = struct.pack("cBcBcB", "S", 3, "R", 0, "F", 2)
                 aMessage = True
+            elif m == "name":
+                line = "Spur button"
+                stringLength = len(line) + 1
+                formatString = "cBcBcBcBcB" + str(stringLength) + "sc"
+                formatMessage = struct.pack(formatString, "S", 22, "R", 0, "F", 2, "Y", 10, "C", stringLength, str(line), "\00")
+                line = self.nodeConfig[nodeAddr][m] 
+                self.cbLog("debug", "name: " + line)
+                stringLength = len(line) + 1
+                formatString = "cBcB" + str(stringLength) + "sc"
+                segment = struct.pack(formatString, "Y", 40, "C", stringLength, str(line), "\00")
+                formatMessage += segment
+                line = "Double-push to start"
+                stringLength = len(line) + 1
+                formatString = "cBcB" + str(stringLength) + "sc"
+                segment = struct.pack(formatString, "Y", 70, "C", stringLength, str(line), "\00")
+                formatMessage += segment
             elif m[0] == "S":
                 s = self.nodeConfig[nodeAddr][m]
                 formatMessage = struct.pack("cBBBBBBBBBBBBBBBB", "M", s["state"], s["display"], s["alert"], s["left-double"], \
                     s["left-single"], 0xFF, 0xFF, s["right-single"], s["right-double"], s["message-value"], s["message-state"], \
                     s["wait-value"], s["wait-state"], 0xFF, 0xFF, 0xFF)
-            elif m == "override":
-                override = True
-                if self.nodeConfig[nodeAddr][m] == True:
-                    formatMessage = struct.pack("cB", "C", 1)
-                else:
-                    formatMessage = struct.pack("cB", "C", 0)
+            elif m == "app_value":
+                formatMessage = struct.pack("cB", "C", (int)(self.nodeConfig[nodeAddr][m]))
             if aMessage:
                 lines = self.nodeConfig[nodeAddr][m].split("\n")
+                firstSplit = None 
                 numLines = len(lines)
                 for l in lines:
-                    self.cbLog("debug", "sendConfig, line:: " + str(l))
-                    stringLength = len(l) + 1
-                    y_start =  Y_STARTS[numLines-1][lines.index(l)]
-                    self.cbLog("debug", "sendConfig, y_start: " + str(y_start))
-                    formatString = "cBcB" + str(stringLength) + "sc"
-                    segment = struct.pack(formatString, "Y", y_start, "C", stringLength, str(l), "\00")
+                    if "|" in l:
+                       self.cbLog("debug", "Line contains |")
+                       if firstSplit is None:
+                           firstSplit = lines.index(l)
+                       splitLine = l.split("|")
+                       for s in (0, 1):
+                           splitLine[s] = splitLine[s].lstrip().rstrip()  # Removes whitespace
+                           self.cbLog("debug", "After whitespace removed: " + str(splitLine[s]))
+                           stringLength = len(splitLine[s]) + 1
+                           y_start =  Y_STARTS[numLines-1][lines.index(l)]
+                           self.cbLog("debug", "sendConfig, string: " + splitLine[s] + ", length: " + str(stringLength))
+                           self.cbLog("debug", "sendConfig, y_start: " + str(y_start))
+                           formatString = "cBcB" + str(stringLength) + "sc"
+                           if s == 0:
+                               x = "l"
+                           else:
+                               x = "r"
+                           segment = struct.pack(formatString, "Y", y_start, x, stringLength, str(splitLine[s]), "\00")
+                           self.cbLog("debug", "segment: " + str(segment.encode("hex")))
+                           formatMessage += segment
+                    else:
+                        self.cbLog("debug", "sendConfig, line: " + str(l))
+                        stringLength = len(l) + 1
+                        y_start =  Y_STARTS[numLines-1][lines.index(l)]
+                        self.cbLog("debug", "sendConfig, y_start: " + str(y_start))
+                        formatString = "cBcB" + str(stringLength) + "sc"
+                        segment = struct.pack(formatString, "Y", y_start, "C", stringLength, str(l), "\00")
+                        formatMessage += segment
+                self.cbLog("debug", "sendConfig, firstSplit: " + str(firstSplit) + ", numLines: " + str(numLines))
+                if firstSplit == 0:
+                    segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 1, "B", 0x62, 0x5C, "X", 2, "Y", 2, "B", 0x60, 0x5A, \
+                                            "X", 0x65, "Y", 1, "B", 0x62, 0x5C, "X", 0x66, "Y", 2, "B", 0x60, 0x5A)  
+                    formatMessage += segment
+                elif numLines == 4:
+                    if firstSplit == 1:
+                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x18, "B", 0x62, 0x44, "X", 2, "Y", 0x19, "B", 0x60, 0x42, \
+                                            "X", 0x65, "Y", 0x18, "B", 0x62, 0x44, "X", 0x66, "Y", 0x19, "B", 0x60, 0x42)  
+                    elif firstSplit == 2:
+                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x2E, "B", 0x62, 0x30, "X", 2, "Y", 0x2F, "B", 0x60, 0x2E, \
+                                            "X", 0x65, "Y", 0x2E, "B", 0x62, 0x30, "X", 0x66, "Y", 0x2F, "B", 0x60, 0x2E)  
+                    elif firstSplit == 3:
+                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x44, "B", 0x62, 0x18, "X", 2, "Y", 0x45, "B", 0x60, 0x16, \
+                                            "X", 0x65, "Y", 0x44, "B", 0x62, 0x18, "X", 0x66, "Y", 0x46, "B", 0x60, 0x16)  
+                    formatMessage += segment
+                elif numLines == 3:
+                    if firstSplit == 1:
+                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x1E, "B", 0x62, 0x40, "X", 2, "Y", 0x1F, "B", 0x60, 0x3E, \
+                                            "X", 0x65, "Y", 0x1E, "B", 0x62, 0x40, "X", 0x66, "Y", 0x1F, "B", 0x60, 0x3E)  
+                    elif firstSplit == 2:
+                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x44, "B", 0x62, 0x18, "X", 2, "Y", 0x45, "B", 0x60, 0x16, \
+                                            "X", 0x65, "Y", 0x44, "B", 0x62, 0x18, "X", 0x66, "Y", 0x45, "B", 0x60, 0x16)  
+                    formatMessage += segment
+                elif numLines == 2:
+                    if firstSplit == 1:
+                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x30, "B", 0x62, 0x2F, "X", 2, "Y", 0x31, "B", 0x60, 0x2D, \
+                                            "X", 0x65, "Y", 0x30, "B", 0x62, 0x2F, "X", 0x66, "Y", 0x31, "B", 0x60, 0x2D)  
                     formatMessage += segment
                 segment = struct.pack("cc", "E", "S") 
                 formatMessage += segment
@@ -202,8 +264,10 @@ class App(CbApp):
             wakeup = 0
             msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
             self.queueRadio(msg, nodeAddr, "config")
-        nodeID = self.addr2id[nodeAddr]
+        self.cbLog("debug", "Trying to look up " + str(nodeAddr) + " in addr2id, self.including: " + str(self.including))
+        nodeID = self.addr2id[str(nodeAddr)]
         if nodeID in self.including:
+            msg = self.formatRadioMessage(nodeAddr, "start", 0, formatMessage)
             self.queueRadio(msg, nodeAddr, "start")
             self.including.remove(nodeID)
         del(self.nodeConfig[nodeAddr])
@@ -234,10 +298,16 @@ class App(CbApp):
                         "include_req": nodeID
                     }
                     self.client.send(msg)
-                    self.including.append(nodeID)
+                    self.including.append(str(nodeID))
                 elif function == "alert":
                     payload = message[10:12]
-                    alertType = ALERTS[struct.unpack(">H", payload)[0]]
+                    hexPayload = payload.encode("hex")
+                    self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
+                    try:
+                        alertType = struct.unpack(">H", payload)[0]
+                    except Exception as ex:
+                        alertType = "Unknown"
+                        self.cbLog("warning", "Unknown alert type received. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
                     self.cbLog("debug", "Rx, alert, type: " + str(alertType))
                     msg = {
                         "function": "alert",
@@ -332,7 +402,7 @@ class App(CbApp):
                     if m["attempt"] > 3:
                         self.messageQueue.remove(m)
                         self.sentTo.remove(m["destination"])
-                        self.cbLog("debug", "sendQueued: Removed: " + m["function"] + ", for " + str(m["destination"]))
+                        self.cbLog("debug", "sendQueued: No ack, removed: " + m["function"] + ", for " + str(m["destination"]))
                     else:
                         self.sendMessage(m["message"], self.adaptor)
                         m["sentTime"] = now
