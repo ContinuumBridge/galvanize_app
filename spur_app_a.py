@@ -49,10 +49,12 @@ Y_STARTS = (
 );
 
 SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
-CHECK_INTERVAL      = 30
+CHECK_INTERVAL      = 30*60
 CID                 = "CID157"           # Client ID
 GRANT_ADDRESS       = 0xBB00
-NORMAL_WAKEUP       = 300                # How long node should sleep for, seconds/2
+NORMAL_WAKEUP       = 60*60*2                # How long node should sleep for, seconds/2
+#NORMAL_WAKEUP       = 30                # How long node should sleep for in normal state, seconds/2
+PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 config              = {
                         "nodes": [ ]
 }
@@ -70,6 +72,7 @@ class App(CbApp):
         self.nodeConfig     = {} 
         self.beaconCalled   = 0
         self.including      = []
+        self.buttonState    = {}
 
         # Super-class init must be called
         CbApp.__init__(self, argv)
@@ -85,7 +88,8 @@ class App(CbApp):
         state = {
             "id2addr": self.id2addr,
             "addr2id": self.addr2id,
-            "maxAddr": self.maxAddr
+            "maxAddr": self.maxAddr,
+            "buttonState": self.buttonState
         }
         try:
             with open(self.saveFile, 'w') as f:
@@ -103,6 +107,7 @@ class App(CbApp):
                 self.id2addr = state["id2addr"]
                 self.addr2id = state["addr2id"]
                 self.maxAddr = state["maxAddr"]
+                self.buttonState = state["buttonState"]
         except Exception as ex:
             self.cbLog("warning", "Problem loading saved state. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
         #finally:
@@ -143,6 +148,7 @@ class App(CbApp):
                         self.cbLog("debug", "id2addr: " + str(self.id2addr))
                         self.addr2id[str(self.maxAddr)] = nodeID
                         self.cbLog("debug", "addr2id: " + str(self.addr2id))
+                        self.buttonState[str(self.maxAddr)] = 0xFF
                         self.save()
                     data = struct.pack(">IH", int(nodeID), self.maxAddr)
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
@@ -243,7 +249,7 @@ class App(CbApp):
                                             "X", 0x65, "Y", 0x2E, "B", 0x62, 0x30, "X", 0x66, "Y", 0x2F, "B", 0x60, 0x2E)  
                     elif firstSplit == 3:
                         segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x44, "B", 0x62, 0x18, "X", 2, "Y", 0x45, "B", 0x60, 0x16, \
-                                            "X", 0x65, "Y", 0x44, "B", 0x62, 0x18, "X", 0x66, "Y", 0x46, "B", 0x60, 0x16)  
+                                            "X", 0x65, "Y", 0x44, "B", 0x62, 0x18, "X", 0x66, "Y", 0x45, "B", 0x60, 0x16)  
                     formatMessage += segment
                 elif numLines == 3:
                     if firstSplit == 1:
@@ -283,6 +289,9 @@ class App(CbApp):
                     function = (key for key,value in FUNCTIONS.items() if value==hexFunction).next()
                 except:
                     function = "undefined"
+                if (str(source) not in self.addr2id) and source != 0:
+                    self.cbLog("warning", "Radio message for node at unallocated address: " + str(source))
+                    return
                 #hexMessage = message.encode("hex")
                 #self.cbLog("debug", "hex message after decode: " + str(hexMessage))
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
@@ -306,9 +315,10 @@ class App(CbApp):
                     try:
                         alertType = struct.unpack(">H", payload)[0]
                     except Exception as ex:
-                        alertType = "Unknown"
+                        alertType = 0xFF
                         self.cbLog("warning", "Unknown alert type received. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
                     self.cbLog("debug", "Rx, alert, type: " + str(alertType))
+                    self.buttonState[str(source)] = alertType
                     msg = {
                         "function": "alert",
                         "type": alertType,
@@ -334,9 +344,13 @@ class App(CbApp):
                     self.cbLog("warning", "onRadioMessage, undefined message, source " + str(source) + ", function: " + function)
 
     def setWakeup(self, nodeAddr):
-        wakeup = NORMAL_WAKEUP
-        self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(self.nodeConfig))
-        if nodeAddr in self.nodeConfig:
+        self.cbLog("debug", "setWakeup, nodeAddr: " + str(nodeAddr) + ", self.buttonState: " + str(self.buttonState))
+        if self.buttonState[str(nodeAddr)] == 0x01:
+            wakeup = PRESSED_WAKEUP
+        else:
+            wakeup = NORMAL_WAKEUP
+        self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.including: " + str(self.including))
+        if (nodeAddr in self.nodeConfig) or (self.addr2id[str(nodeAddr)] in self.including):
             wakeup = 0;
             reactor.callLater(1, self.sendConfig, nodeAddr)
         else:
@@ -361,8 +375,8 @@ class App(CbApp):
                         self.sentTo.remove(source)
                     else:
                         moreToCome = True
-            if not moreToCome:
-                msg = self.formatRadioMessage(source, "ack", NORMAL_WAKEUP)
+            if not moreToCome and not self.addr2id[str(source)] in self.including:
+                msg = self.formatRadioMessage(source, "ack", PRESSED_WAKEUP)  # Shorter wakeup immediately after config
                 self.queueRadio(msg, source, "ack")
         else:
             self.cbLog("warning", "onAck, received ack from node that does not correspond to a sent message: " + str(source))
