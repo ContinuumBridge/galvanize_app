@@ -150,7 +150,7 @@ class App(CbApp):
                         self.cbLog("debug", "addr2id: " + str(self.addr2id))
                         self.buttonState[str(self.maxAddr)] = 0xFF
                         self.save()
-                    data = struct.pack(">IH", int(nodeID), self.maxAddr)
+                    data = struct.pack(">IH", int(nodeID), self.id2addr[str(nodeID)])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
                     self.queueRadio(msg, self.id2addr[str(nodeID)], "include_grant")
                 elif message["function"] == "config":
@@ -272,10 +272,13 @@ class App(CbApp):
             self.queueRadio(msg, nodeAddr, "config")
         self.cbLog("debug", "Trying to look up " + str(nodeAddr) + " in addr2id, self.including: " + str(self.including))
         nodeID = self.addr2id[str(nodeAddr)]
-        if nodeID in self.including:
-            msg = self.formatRadioMessage(nodeAddr, "start", 0, formatMessage)
-            self.queueRadio(msg, nodeAddr, "start")
-            self.including.remove(nodeID)
+        try:
+            if nodeID in list(self.including):
+                msg = self.formatRadioMessage(nodeAddr, "start", 0, formatMessage)
+                self.queueRadio(msg, nodeAddr, "start")
+                self.including.remove(nodeID)
+        except Exception as ex:
+            self.cbLog("warning", "sendConfig, expection in removing from self.including. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
         del(self.nodeConfig[nodeAddr])
 
     def onRadioMessage(self, message):
