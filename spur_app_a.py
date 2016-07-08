@@ -275,10 +275,11 @@ class App(CbApp):
             wakeup = 0
             msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
             self.queueRadio(msg, int(nodeAddr), "config")
-        self.cbLog("debug", "Trying to look up " + str(nodeAddr) + " in addr2id, self.including: " + str(self.including))
         nodeID = self.addr2id[nodeAddr]
         try:
+            self.cbLog("debug", "Should I remove " + str(nodeID) + " from " + str(self.including))
             if nodeID in list(self.including):
+                self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
                 msg = self.formatRadioMessage(nodeAddr, "start", 0, formatMessage)
                 self.queueRadio(msg, nodeAddr, "start")
                 self.requestBattery(nodeAddr)
@@ -321,7 +322,11 @@ class App(CbApp):
                         "include_req": nodeID
                     }
                     self.client.send(msg)
-                    self.including.append(nodeID)
+                    if nodeID not in list(self.including):
+                        self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
+                        self.including.append(nodeID)
+                    else:
+                        self.removeNodeMessages(nodeID)
                 elif function == "alert":
                     payload = message[10:12]
                     #hexPayload = payload.encode("hex")
@@ -418,6 +423,16 @@ class App(CbApp):
             self.beaconCalled += 1
             self.sendQueued()
         reactor.callLater(1, self.beacon)
+
+    def removeNodeMessages(self, nodeID):
+        #Remove all queued messages and reference to a node if we get a new include_req
+        addr = self.id2addr[nodeID]
+        for m in list(self.messageQueue):
+            if m["destination"] == addr:
+                self.messageQueue.remove(m)
+                self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
+        del self.id2addr[nodeID]
+        del self.addr2id[addr]
 
     def sendQueued(self):
         now = time.time()
