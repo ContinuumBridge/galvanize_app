@@ -381,10 +381,12 @@ class App(CbApp):
         self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.including: " + str(self.including))
         if (nodeAddr in self.nodeConfig) or (self.addr2id[nodeAddr] in self.including):
             wakeup = 0;
+            self.cbLog("debug", "wakeup = 0 (1)")
         else:
             for m in self.messageQueue:
                 if m["destination"] == nodeAddr:
                     wakeup = 0;
+                    self.cbLog("debug", "wakeup = 0 (2)")
         if (nodeAddr in self.nodeConfig) and (nodeAddr not in self.sendingConfig):
             reactor.callLater(1, self.sendConfig, nodeAddr)
             self.sendingConfig.append(nodeAddr)
@@ -426,13 +428,14 @@ class App(CbApp):
 
     def removeNodeMessages(self, nodeID):
         #Remove all queued messages and reference to a node if we get a new include_req
-        addr = self.id2addr[nodeID]
-        for m in list(self.messageQueue):
-            if m["destination"] == addr:
-                self.messageQueue.remove(m)
-                self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
-        del self.id2addr[nodeID]
-        del self.addr2id[addr]
+        if nodeID in self.id2addr:
+            addr = self.id2addr[nodeID]
+            for m in list(self.messageQueue):
+                if m["destination"] == addr:
+                    self.messageQueue.remove(m)
+                    self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
+            del self.id2addr[nodeID]
+            del self.addr2id[addr]
 
     def sendQueued(self):
         now = time.time()
