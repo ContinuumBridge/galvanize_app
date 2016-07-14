@@ -160,14 +160,14 @@ class App(CbApp):
                     self.cbLog("debug", "onClientMessage, id2addr: " + str(self.id2addr))
                     self.cbLog("debug", "onClientMessage, addr2id: " + str(self.addr2id))
                     self.cbLog("debug", "onClientMessage, message[node]: " + str(message["node"]))
-                    self.cbLog("debug", "onClientMessage, message[config]: " + str(json.dumps(message["config"], indent=4)))
+                    #self.cbLog("debug", "onClientMessage, message[config]: " + str(json.dumps(message["config"], indent=4)))
                     self.nodeConfig[self.id2addr[int(message["node"])]] = message["config"]
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
         #except Exception as ex:
         #    self.cbLog("warning", "onClientMessage exception. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
 
     def sendConfig(self, nodeAddr):
-        self.cbLog("debug", "sendConfig, nodeAddr: " + str(nodeAddr) + ", nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
+        #self.cbLog("debug", "sendConfig, nodeAddr: " + str(nodeAddr) + ", nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
         #self.cbLog("debug", "sendConfig, type of nodeAddr: " + type(nodeAddr).__name__)
         formatMessage = ""
         messageCount = 0
@@ -282,7 +282,7 @@ class App(CbApp):
                 self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
                 msg = self.formatRadioMessage(nodeAddr, "start", 0, formatMessage)
                 self.queueRadio(msg, nodeAddr, "start")
-                self.requestBattery(nodeAddr)
+                #self.requestBattery(nodeAddr)
                 self.including.remove(nodeID)
         except Exception as ex:
             self.cbLog("warning", "sendConfig, expection in removing from self.including. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
@@ -323,9 +323,9 @@ class App(CbApp):
                     }
                     self.client.send(msg)
                     if nodeID not in list(self.including):
-                        self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
                         self.including.append(nodeID)
                     else:
+                        self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
                         self.removeNodeMessages(nodeID)
                 elif function == "alert":
                     payload = message[10:12]
@@ -383,6 +383,7 @@ class App(CbApp):
             wakeup = 0;
             self.cbLog("debug", "wakeup = 0 (1)")
         else:
+            self.cbLog("debug", "setWakeup, messageQueue (2): " + str(json.dumps(self.messageQueue, indent=4)))
             for m in self.messageQueue:
                 if m["destination"] == nodeAddr:
                     wakeup = 0;
@@ -434,8 +435,14 @@ class App(CbApp):
                 if m["destination"] == addr:
                     self.messageQueue.remove(m)
                     self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
-            del self.id2addr[nodeID]
-            del self.addr2id[addr]
+            if addr in self.nodeConfig:
+                del self.nodeConfig[addr]
+            if addr in self.buttonState:
+                del self.buttonState[addr]
+            if nodeID in self.id2addr:
+                del self.id2addr[nodeID]
+            if addr in self.addr2id:
+                del self.addr2id[addr]
 
     def sendQueued(self):
         now = time.time()
