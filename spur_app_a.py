@@ -56,6 +56,7 @@ GRANT_ADDRESS       = 0xBB00
 NORMAL_WAKEUP       = 60*60*2                # How long node should sleep for, seconds/2
 #NORMAL_WAKEUP       = 30                # How long node should sleep for in normal state, seconds/2
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
+BEACON_INTERVAL     = 6
 config              = {
                         "nodes": [ ]
 }
@@ -280,7 +281,7 @@ class App(CbApp):
             self.cbLog("debug", "Should I remove " + str(nodeID) + " from " + str(self.including))
             if nodeID in list(self.including):
                 self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
-                msg = self.formatRadioMessage(nodeAddr, "start", 0, formatMessage)
+                msg = self.formatRadioMessage(nodeAddr, "start", PRESSED_WAKEUP, formatMessage)
                 self.queueRadio(msg, nodeAddr, "start")
                 #self.requestBattery(nodeAddr)
                 self.including.remove(nodeID)
@@ -410,15 +411,15 @@ class App(CbApp):
                         self.sentTo.remove(source)
                     else:
                         moreToCome = True
-            if not moreToCome and not self.addr2id[source] in self.including:
-                msg = self.formatRadioMessage(source, "ack", PRESSED_WAKEUP)  # Shorter wakeup immediately after config
-                self.queueRadio(msg, source, "ack")
+            #if not moreToCome and not self.addr2id[source] in self.including:
+            #    msg = self.formatRadioMessage(source, "ack", PRESSED_WAKEUP)  # Shorter wakeup immediately after config
+            #    self.queueRadio(msg, source, "ack")
         else:
             self.cbLog("warning", "onAck, received ack from node that does not correspond to a sent message: " + str(source))
 
     def beacon(self):
         #self.cbLog("debug", "beacon")
-        if self.beaconCalled == 6:
+        if self.beaconCalled == BEACON_INTERVAL:
             msg = self.formatRadioMessage(0xBBBB, "beacon", 0)
             self.sendMessage(msg, self.adaptor)
             self.beaconCalled = 0
