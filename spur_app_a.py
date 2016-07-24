@@ -51,7 +51,8 @@ Y_STARTS = (
 
 SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30*60
-CID                 = "CID157"           # Client ID
+#CID                 = "CID157"           # Client ID
+CID                 = "CID249"           # Client ID
 GRANT_ADDRESS       = 0xBB00
 NORMAL_WAKEUP       = 60*60*2                # How long node should sleep for, seconds/2
 #NORMAL_WAKEUP       = 30                # How long node should sleep for in normal state, seconds/2
@@ -207,7 +208,7 @@ class App(CbApp):
                     s["left-single"], 0xFF, 0xFF, s["right-single"], s["right-double"], s["message-value"], s["message-state"], \
                     s["wait-value"], s["wait-state"], 0xFF, 0xFF, 0xFF)
             elif m == "app_value":
-                formatMessage = struct.pack("cB", "C", self.nodeConfig[nodeAddr][m])
+                formatMessage = struct.pack("cB", "A", self.nodeConfig[nodeAddr][m])
             if aMessage:
                 lines = self.nodeConfig[nodeAddr][m].split("\n")
                 firstSplit = None 
@@ -278,9 +279,8 @@ class App(CbApp):
             self.queueRadio(msg, int(nodeAddr), "config")
         nodeID = self.addr2id[nodeAddr]
         try:
-            self.cbLog("debug", "Should I remove " + str(nodeID) + " from " + str(self.including))
             if nodeID in list(self.including):
-                self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
+                self.cbLog("debug", "Removing nodeID " + str(nodeID) + " from " + str(self.including))
                 msg = self.formatRadioMessage(nodeAddr, "start", PRESSED_WAKEUP, formatMessage)
                 self.queueRadio(msg, nodeAddr, "start")
                 #self.requestBattery(nodeAddr)
@@ -411,9 +411,9 @@ class App(CbApp):
                         self.sentTo.remove(source)
                     else:
                         moreToCome = True
-            #if not moreToCome and not self.addr2id[source] in self.including:
-            #    msg = self.formatRadioMessage(source, "ack", PRESSED_WAKEUP)  # Shorter wakeup immediately after config
-            #    self.queueRadio(msg, source, "ack")
+            if not moreToCome and (self.addr2id[source] not in self.including):
+                msg = self.formatRadioMessage(source, "ack", PRESSED_WAKEUP)  # Shorter wakeup immediately after config
+                self.queueRadio(msg, source, "ack")
         else:
             self.cbLog("warning", "onAck, received ack from node that does not correspond to a sent message: " + str(source))
 
