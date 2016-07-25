@@ -177,14 +177,8 @@ class App(CbApp):
             messageCount += 1
             self.cbLog("debug", "in m loop, m: " + m)
             aMessage = False
-            if m == "normalMessage":
-                formatMessage = struct.pack("cBcBcB", "S", 1, "R", 0, "F", 2)
-                aMessage = True
-            elif m == "pressedMessage":
-                formatMessage = struct.pack("cBcBcB", "S", 2, "R", 0, "F", 2)
-                aMessage = True
-            elif m == "overrideMessage":
-                formatMessage = struct.pack("cBcBcB", "S", 3, "R", 0, "F", 2)
+            if m[0] == "D":
+                formatMessage = struct.pack("cBcBcB", "S", int(m[1:]), "R", 0, "F", 2)
                 aMessage = True
             elif m == "name":
                 line = "Spur button"
@@ -204,9 +198,15 @@ class App(CbApp):
                 formatMessage += segment
             elif m[0] == "S":
                 s = self.nodeConfig[nodeAddr][m]
-                formatMessage = struct.pack("cBBBBBBBBBBBBBBBB", "M", s["state"], s["display"], s["alert"], s["left-double"], \
-                    s["left-single"], 0xFF, 0xFF, s["right-single"], s["right-double"], s["message-value"], s["message-state"], \
-                    s["wait-value"], s["wait-state"], 0xFF, 0xFF, 0xFF)
+                self.cbLog("debug", "nodeConfig before changing: " + str(json.dumps(s, indent=4)))
+                for f in ("SingleLeft", "SingleRight", "DoubleLeft", "DoubleRight", "messageValue", "messageState", "waitValue", "waitState"):
+                    if f not in s:
+                        s[f] = 0xFF
+                #self.cbLog("debug", "nodeConfig before sending: " + str(json.dumps(self.nodeConfig[nodeAddr][m], indent=4)))
+                self.cbLog("debug", "nodeConfig before sending: " + str(json.dumps(s, indent=4)))
+                formatMessage = struct.pack("cBBBBBBBBBBBBBBBB", "M", s["state"], s["state"], s["alert"], s["DoubleLeft"], \
+                    s["SingleLeft"], 0xFF, 0xFF, s["SingleRight"], s["DoubleRight"], s["messageValue"], s["messageState"], \
+                    s["waitValue"], s["waitState"], 0xFF, 0xFF, 0xFF)
             elif m == "app_value":
                 formatMessage = struct.pack("cB", "A", self.nodeConfig[nodeAddr][m])
             if aMessage:
