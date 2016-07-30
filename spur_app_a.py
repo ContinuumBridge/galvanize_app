@@ -297,7 +297,10 @@ class App(CbApp):
     def onRadioMessage(self, message):
         if self.radioOn:
             self.cbLog("debug", "onRadioMessage")
-            destination = struct.unpack(">H", message[0:2])[0]
+            try:
+                destination = struct.unpack(">H", message[0:2])[0]
+            except Exception as ex:
+                self.cbLog("warning", "onRadioMessage. Malformed radio message. Type: {}, exception: {}".format(type(ex), ex.args))
             #self.cbLog("debug", "Rx: destination: " + str("{0:#0{1}X}".format(destination,6)))
             if destination == SPUR_ADDRESS:
                 source, hexFunction, length = struct.unpack(">HBB", message[2:6])
