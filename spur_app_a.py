@@ -5,6 +5,8 @@ Copyright (c) 2015 ContinuumBridge Limited
 """
 
 import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
 import time
 import json
 import pickle
@@ -51,8 +53,8 @@ Y_STARTS = (
 
 SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30*60
-#CID                 = "CID157"           # Client ID
-CID                 = "CID249"           # Client ID
+CID                 = "CID157"           # Client ID Client Server
+#CID                 = "CID249"           # Client ID Dev Server
 GRANT_ADDRESS       = 0xBB00
 NORMAL_WAKEUP       = 60*60*2                # How long node should sleep for, seconds/2
 #NORMAL_WAKEUP       = 30                # How long node should sleep for in normal state, seconds/2
@@ -210,7 +212,10 @@ class App(CbApp):
             elif m == "app_value":
                 formatMessage = struct.pack("cB", "A", self.nodeConfig[nodeAddr][m])
             if aMessage:
-                lines = self.nodeConfig[nodeAddr][m].split("\n")
+                self.cbLog("debug", "sendConfig, aMessage")
+                display = base64.b64decode(self.nodeConfig[nodeAddr][m])
+                self.cbLog("debug", "sendConfig, display: {}".format(display))
+                lines = display.split("\n")
                 firstSplit = None 
                 numLines = len(lines)
                 for l in lines:
@@ -425,10 +430,11 @@ class App(CbApp):
         if self.beaconCalled == BEACON_INTERVAL:
             msg = self.formatRadioMessage(0xBBBB, "beacon", 0)
             self.sendMessage(msg, self.adaptor)
+            self.sendQueued(True)
             self.beaconCalled = 0
         else:
             self.beaconCalled += 1
-            self.sendQueued()
+            self.sendQueued(False)
         reactor.callLater(1, self.beacon)
 
     def removeNodeMessages(self, nodeID):
@@ -448,7 +454,10 @@ class App(CbApp):
             if addr in self.addr2id:
                 del self.addr2id[addr]
 
-    def sendQueued(self):
+    def sendQueued(self, beacon):
+        """
+        In frames where a beacon is sent, don't send anything else apart from acks.
+        """
         now = time.time()
         sentLength = 0
         sentAck = []
@@ -461,14 +470,14 @@ class App(CbApp):
                     self.messageQueue.remove(m)  # Only send ack once
                     sentAck.append(m["destination"])
                     sentLength += m["message"]["length"]
-                elif (m["destination"] not in self.sentTo) and (m["destination"] not in sentAck):
+                elif (m["destination"] not in self.sentTo) and (m["destination"] not in sentAck) and not beacon:
                     self.sendMessage(m["message"], self.adaptor)
                     self.sentTo.append(m["destination"])
                     m["sentTime"] = now
                     m["attempt"] = 1
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]) + ", attempt " + str(m["attempt"]))
                     sentLength += m["message"]["length"]
-                elif (now - m["sentTime"] > 9) and (m["destination"] not in sentAck) and (m["attempt"] > 0):
+                elif (now - m["sentTime"] > 9) and (m["destination"] not in sentAck) and (m["attempt"] > 0) and not beacon:
                     if m["attempt"] > 3:
                         self.messageQueue.remove(m)
                         self.sentTo.remove(m["destination"])
