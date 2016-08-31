@@ -53,8 +53,8 @@ Y_STARTS = (
 
 SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 CHECK_INTERVAL      = 30*60
-CID                 = "CID157"           # Client ID Client Server
-#CID                 = "CID249"           # Client ID Dev Server
+#CID                 = "CID157"           # Client ID Client Server
+CID                 = "CID249"           # Client ID Dev Server
 GRANT_ADDRESS       = 0xBB00
 NORMAL_WAKEUP       = 60*60*2                # How long node should sleep for, seconds/2
 #NORMAL_WAKEUP       = 30                # How long node should sleep for in normal state, seconds/2
@@ -75,6 +75,8 @@ class App(CbApp):
         self.messageQueue   = []
         self.sentTo         = []
         self.nodeConfig     = {} 
+        self.wakeups        = {}
+        self.wakeupCount    = {}
         self.beaconCalled   = 0
         self.including      = []
         self.sendingConfig  = []
@@ -175,6 +177,7 @@ class App(CbApp):
         #self.cbLog("debug", "sendConfig, type of nodeAddr: " + type(nodeAddr).__name__)
         formatMessage = ""
         messageCount = 0
+        statesInConfig = False
         for m in self.nodeConfig[nodeAddr]:
             messageCount += 1
             self.cbLog("debug", "in m loop, m: " + m)
@@ -199,16 +202,18 @@ class App(CbApp):
                 segment = struct.pack(formatString, "Y", 70, "C", stringLength, str(line), "\00")
                 formatMessage += segment
             elif m[0] == "S":
+                statesInConfig = True
+                self.cbLog("debug", "statesInConfig")
                 s = self.nodeConfig[nodeAddr][m]
                 self.cbLog("debug", "nodeConfig before changing: " + str(json.dumps(s, indent=4)))
-                for f in ("SingleLeft", "SingleRight", "DoubleLeft", "DoubleRight", "messageValue", "messageState", "waitValue", "waitState"):
+                for f in ("SingleLeft", "SingleRight", "DoubleLeft", "DoubleRight", "messageValue", "messageState", "delayValue", "delayState"):
                     if f not in s:
                         s[f] = 0xFF
                 #self.cbLog("debug", "nodeConfig before sending: " + str(json.dumps(self.nodeConfig[nodeAddr][m], indent=4)))
                 self.cbLog("debug", "nodeConfig before sending: " + str(json.dumps(s, indent=4)))
                 formatMessage = struct.pack("cBBBBBBBBBBBBBBBB", "M", s["state"], s["state"], s["alert"], s["DoubleLeft"], \
                     s["SingleLeft"], 0xFF, 0xFF, s["SingleRight"], s["DoubleRight"], s["messageValue"], s["messageState"], \
-                    s["waitValue"], s["waitState"], 0xFF, 0xFF, 0xFF)
+                    s["delayValue"], s["delayState"], 0xFF, 0xFF, 0xFF)
             elif m == "app_value":
                 formatMessage = struct.pack("cB", "A", self.nodeConfig[nodeAddr][m])
             if aMessage:
@@ -292,6 +297,25 @@ class App(CbApp):
                 self.including.remove(nodeID)
         except Exception as ex:
             self.cbLog("warning", "sendConfig, expection in removing from self.including. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+        self.cbLog("debug", "sendConfig statesInConfig: {}".format(statesInConfig))
+        if statesInConfig:
+            self.wakeupCount[nodeAddr] = 0
+            for m in self.nodeConfig[nodeAddr]:
+                if m[0] == "S":
+                    if "wakeup" in self.nodeConfig[nodeAddr][m]:
+                        self.cbLog("debug", "sendConfig nodeConfig-alert: {}".format(self.nodeConfig[nodeAddr][m]["alert"]))
+                        self.cbLog("debug", "sendConfig nodeConfig-wakeup: {}".format(self.nodeConfig[nodeAddr][m]["wakeup"]))
+                        self.cbLog("debug", "sendConfig type of nodeAddr: {}".format(type(nodeAddr)))
+                        if nodeAddr not in self.wakeups:
+                            self.wakeups[nodeAddr] = {}
+                        self.wakeups[nodeAddr][self.nodeConfig[nodeAddr][m]["alert"]] = self.nodeConfig[nodeAddr][m]["wakeup"]
+                    else:
+                        if nodeAddr not in self.wakeups:
+                            self.wakeups[nodeAddr] = {}
+                        self.wakeups[nodeAddr][self.nodeConfig[nodeAddr][m]["alert"]] = [240]
+            self.cbLog("debug", "sendConfig added to wakeups nodeAddr: {}, nodeID: {}".format(nodeAddr, nodeID))
+            self.cbLog("debug", "sendConfig wakeups: " + str(json.dumps(self.wakeups, indent=4)))
+            self.cbLog("debug", "sendConfig wakeupCount: " + str(json.dumps(self.wakeupCount, indent=4)))
         del(self.nodeConfig[nodeAddr])
         self.sendingConfig.remove(nodeAddr)
 
@@ -321,14 +345,16 @@ class App(CbApp):
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
 
                 if function == "include_req":
-                    payload = message[10:14]
+                    payload = message[10:16]
                     hexPayload = payload.encode("hex")
                     self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
-                    nodeID = struct.unpack(">I", payload)[0]
+                    (nodeID, version, rssi) = struct.unpack(">Ibb", payload)
                     self.cbLog("debug", "Rx, include_req, nodeID: " + str(nodeID))
                     msg = {
                         "function": "include_req",
-                        "include_req": nodeID
+                        "include_req": nodeID,
+                        "version": version,
+                        "rssi": rssi
                     }
                     self.client.send(msg)
                     if nodeID not in list(self.including):
@@ -356,7 +382,9 @@ class App(CbApp):
                             "source": self.addr2id[source]
                         }
                     else:    
+                        self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}".format(source))
                         self.buttonState[source] = alertType & 0xFF
+                        self.wakeupCount[str(source)] = 0
                         msg = {
                             "function": "alert",
                             "type": alertType,
@@ -382,11 +410,8 @@ class App(CbApp):
                     self.cbLog("warning", "onRadioMessage, undefined message, source " + str(source) + ", function: " + function)
 
     def setWakeup(self, nodeAddr):
+        wakeup = -1
         self.cbLog("debug", "setWakeup, nodeAddr: " + str(nodeAddr) + ", self.buttonState: " + str(self.buttonState))
-        if self.buttonState[nodeAddr] == 0x01:
-            wakeup = PRESSED_WAKEUP
-        else:
-            wakeup = NORMAL_WAKEUP
         self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.including: " + str(self.including))
         if (nodeAddr in self.nodeConfig) or (self.addr2id[nodeAddr] in self.including):
             wakeup = 0;
@@ -397,6 +422,13 @@ class App(CbApp):
                 if m["destination"] == nodeAddr:
                     wakeup = 0;
                     self.cbLog("debug", "wakeup = 0 (2)")
+                    break
+            if wakeup == -1:
+                self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
+                wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
+                self.wakeupCount[nodeAddr] += 1
+                if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
+                    self.wakeupCount[nodeAddr] = len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]) - 1
         if (nodeAddr in self.nodeConfig) and (nodeAddr not in self.sendingConfig):
             reactor.callLater(1, self.sendConfig, nodeAddr)
             self.sendingConfig.append(nodeAddr)
