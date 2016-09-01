@@ -228,7 +228,8 @@ class App(CbApp):
                        self.cbLog("debug", "Line contains |")
                        if firstSplit is None:
                            firstSplit = lines.index(l)
-                       splitLine = l.split("|")
+                       ll = l.decode("utf-8").encode("latin-1", "ignore")
+                       splitLine = ll.split("|")
                        for s in (0, 1):
                            splitLine[s] = splitLine[s].lstrip().rstrip()  # Removes whitespace
                            self.cbLog("debug", "After whitespace removed: " + str(splitLine[s]))
@@ -246,11 +247,15 @@ class App(CbApp):
                            formatMessage += segment
                     else:
                         self.cbLog("debug", "sendConfig, line: " + str(l))
-                        stringLength = len(l) + 1
+                        ll = l.decode("utf-8").encode("latin-1", "ignore")
+                        self.cbLog("debug", "sendConfig, line: {}".format(ll))
+                        stringLength = len(ll) + 1
                         y_start =  Y_STARTS[numLines-1][lines.index(l)]
                         self.cbLog("debug", "sendConfig, y_start: " + str(y_start))
+                        formatString = "cBcB"
+                        segment = struct.pack(formatString, "Y", y_start, "C", stringLength)
                         formatString = "cBcB" + str(stringLength) + "sc"
-                        segment = struct.pack(formatString, "Y", y_start, "C", stringLength, str(l), "\00")
+                        segment = struct.pack(formatString, "Y", y_start, "C", stringLength, ll, "\00")
                         formatMessage += segment
                 self.cbLog("debug", "sendConfig, firstSplit: " + str(firstSplit) + ", numLines: " + str(numLines))
                 if firstSplit == 0:
@@ -283,8 +288,20 @@ class App(CbApp):
                     formatMessage += segment
                 segment = struct.pack("cc", "E", "S") 
                 formatMessage += segment
+            self.cbLog("debug", "Sending to node: {}".format(formatMessage))
             self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
             wakeup = 0
+            """
+            sendMessage = ""
+            for c in formatMessage:
+                if ord(c) > 127:
+                    sendMessage += "|"
+                    sendMessage += chr(ord(c)-128)
+                    self.cbLog("debug", "Replaced {} with {}".format(ord(c), ord(c)-128))
+                else:
+                    sendMessage += c
+            self.cbLog("debug", "Sending to node: {}".format(sendMessage))
+            """
             msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
             self.queueRadio(msg, int(nodeAddr), "config")
         nodeID = self.addr2id[nodeAddr]
@@ -384,7 +401,7 @@ class App(CbApp):
                     else:    
                         self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}".format(source))
                         self.buttonState[source] = alertType & 0xFF
-                        self.wakeupCount[str(source)] = 0
+                        self.wakeupCount[source] = 0
                         msg = {
                             "function": "alert",
                             "type": alertType,
