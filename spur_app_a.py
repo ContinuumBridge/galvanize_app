@@ -5,13 +5,14 @@ Copyright (c) 2015 ContinuumBridge Limited
 """
 
 import sys
-reload(sys)
-sys.setdefaultencoding('utf-8')
+#reload(sys)
+#sys.setdefaultencoding('utf-8')
 import time
 import json
 import pickle
 import struct
 import base64
+import random
 from cbcommslib import CbApp, CbClient
 from cbconfig import *
 from twisted.internet import reactor
@@ -27,22 +28,10 @@ FUNCTIONS = {
     "woken_up": 0x07,
     "ack": 0x08,
     "beacon": 0x0A,
-    "start": 0x0B
+    "start": 0x0B,
+    "nack": 0x0C,
+    "include_not": 0x0D
 }
-ALERTS = {
-    0x0000: "left_short",
-    0x0001: "right_short",
-    0x0002: "left_long",
-    0x0003: "right_long",
-    0x0200: "battery"
-}
-MESSAGE_NAMES = (
-    "normalMessage",
-    "pressedMessage",
-    "overrideMessage",
-    "override"
-)
-
 Y_STARTS = (
     (38, 0, 0 ,0, 0),
     (18, 56, 0, 0, 0),
@@ -51,14 +40,14 @@ Y_STARTS = (
     (0, 20, 40, 60, 80)
 );
 
-SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
+#SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
+SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 30*60
-#CID                 = "CID157"           # Client ID Client Server
-CID                 = "CID249"           # Client ID Dev Server
+#CID                 = "CID157"         # Client ID Client Server
+CID                 = "CID249"          # Client ID Dev Server
 GRANT_ADDRESS       = 0xBB00
-NORMAL_WAKEUP       = 60*60*2                # How long node should sleep for, seconds/2
-#NORMAL_WAKEUP       = 30                # How long node should sleep for in normal state, seconds/2
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
+BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
 BEACON_INTERVAL     = 6
 config              = {
                         "nodes": [ ]
@@ -81,6 +70,7 @@ class App(CbApp):
         self.including      = []
         self.sendingConfig  = []
         self.buttonState    = {}
+        #self.ackCount       = 0           # Used purely for test of nack
 
         # Super-class init must be called
         CbApp.__init__(self, argv)
@@ -97,7 +87,9 @@ class App(CbApp):
             "id2addr": self.id2addr,
             "addr2id": self.addr2id,
             "maxAddr": self.maxAddr,
-            "buttonState": self.buttonState
+            "buttonState": self.buttonState,
+            "wakeupCount": self.wakeupCount,
+            "wakeups": self.wakeups
         }
         try:
             with open(self.saveFile, 'w') as f:
@@ -117,14 +109,10 @@ class App(CbApp):
                 self.addr2id = state["addr2id"]
                 self.maxAddr = state["maxAddr"]
                 self.buttonState = state["buttonState"]
+                self.wakeupCount = state["wakeupCount"]
+                self.wakeups = state["wakeups"]
         except Exception as ex:
             self.cbLog("warning", "Problem loading saved state. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
-        #finally:
-        #    try:
-        #        os.remove(self.saveFile)
-        #        self.cbLog("debug", "deleted saved state file")
-        #    except Exception as ex:
-        #        self.cbLog("debug", "Cannot remove saved state file. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
 
     def onStop(self):
         self.save()
@@ -151,7 +139,9 @@ class App(CbApp):
             if "function" in message:
                 if message["function"] == "include_grant":
                     nodeID = int(message["node"])
+                    self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, id2addr: {}".format(nodeID, self.id2addr))
                     if nodeID not in self.id2addr:
+                        self.cbLog("debug", "onClientMessage, nodeID not in id2addr")
                         self.maxAddr += 1
                         self.id2addr[nodeID] = self.maxAddr
                         self.cbLog("debug", "id2addr: " + str(self.id2addr))
@@ -162,12 +152,26 @@ class App(CbApp):
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
                     self.queueRadio(msg, self.id2addr[nodeID], "include_grant")
+                elif message["function"] == "include_not":
+                    nodeID = int(message["node"])
+                    data = struct.pack(">I", nodeID)
+                    msg = self.formatRadioMessage(GRANT_ADDRESS, "include_not", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
+                    self.queueRadio(msg, 0x00, "include_not")
+                    reactor.callLater(2, self.queueRadio, msg, 0x00, "include_not")
                 elif message["function"] == "config":
-                    self.cbLog("debug", "onClientMessage, id2addr: " + str(self.id2addr))
-                    self.cbLog("debug", "onClientMessage, addr2id: " + str(self.addr2id))
                     self.cbLog("debug", "onClientMessage, message[node]: " + str(message["node"]))
-                    #self.cbLog("debug", "onClientMessage, message[config]: " + str(json.dumps(message["config"], indent=4)))
-                    self.nodeConfig[self.id2addr[int(message["node"])]] = message["config"]
+                    nodeAddr = self.id2addr[int(message["node"])]
+                    if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
+                        self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
+                        self.nodeConfig[nodeAddr] = message["config"]
+                    elif nodeAddr in self.nodeConfig:  # We already have some partial config
+                        self.cbLog("debug", "onClientMessage, new partial config for existing: {}".format(nodeAddr))
+                        for c in message["config"]:
+                            self.cbLog("debug", "onClientMessage, c in message[config]: {}".format(c))
+                            self.nodeConfig[nodeAddr][c] = message["config"][c]
+                    else:  # Partial config for a node we don't have any existing config for
+                        self.cbLog("debug", "onClientMessage, new partial config for new: {}".format(nodeAddr))
+                        self.nodeConfig[nodeAddr] = message["config"]
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
         #except Exception as ex:
         #    self.cbLog("warning", "onClientMessage exception. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
@@ -291,17 +295,6 @@ class App(CbApp):
             self.cbLog("debug", "Sending to node: {}".format(formatMessage))
             self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
             wakeup = 0
-            """
-            sendMessage = ""
-            for c in formatMessage:
-                if ord(c) > 127:
-                    sendMessage += "|"
-                    sendMessage += chr(ord(c)-128)
-                    self.cbLog("debug", "Replaced {} with {}".format(ord(c), ord(c)-128))
-                else:
-                    sendMessage += c
-            self.cbLog("debug", "Sending to node: {}".format(sendMessage))
-            """
             msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
             self.queueRadio(msg, int(nodeAddr), "config")
         nodeID = self.addr2id[nodeAddr]
@@ -374,15 +367,12 @@ class App(CbApp):
                         "rssi": rssi
                     }
                     self.client.send(msg)
+                    self.cbLog("debug", "removing all references to nodeID {}".format(nodeID))
+                    self.removeNodeMessages(nodeID)
                     if nodeID not in list(self.including):
                         self.including.append(nodeID)
-                    else:
-                        self.cbLog("debug", "nodeID " + str(nodeID) + " should be removed from " + str(self.including))
-                        self.removeNodeMessages(nodeID)
                 elif function == "alert":
                     payload = message[10:12]
-                    #hexPayload = payload.encode("hex")
-                    #self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
                     try:
                         alertType = struct.unpack(">H", payload)[0]
                     except Exception as ex:
@@ -409,8 +399,17 @@ class App(CbApp):
                             "source": self.addr2id[source]
                         }
                     self.client.send(msg)
-                    msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
-                    self.queueRadio(msg, source, "ack")
+                    #self.cbLog("debug", "onRadioMessage, ackCount: {}".format(self.ackCount))
+                    # Uncomment appropriately to test nack
+                    #if self.ackCount == 3 or self.ackCount == 6:
+                    #    self.cbLog("debug", "onRadioMessage, sending Nack")
+                    #    msg = self.formatRadioMessage(source, "nack", self.setWakeup(source))
+                    #    self.queueRadio(msg, source, "nack")
+                    #else:
+                    if True:
+                        msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
+                        self.queueRadio(msg, source, "ack")
+                    #self.ackCount += 1
                 elif function == "woken_up":
                     self.cbLog("debug", "Rx, woken_up")
                     msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
@@ -481,6 +480,8 @@ class App(CbApp):
             self.sendMessage(msg, self.adaptor)
             self.sendQueued(True)
             self.beaconCalled = 0
+            #r = 0.5 + (random.randrange(1, 6, 1)/10)  # To stop multiple bridges sending beacons at the same time
+            #reactor.callLater(r, self.beacon)
         else:
             self.beaconCalled += 1
             self.sendQueued(False)
@@ -498,10 +499,10 @@ class App(CbApp):
                 del self.nodeConfig[addr]
             if addr in self.buttonState:
                 del self.buttonState[addr]
-            if nodeID in self.id2addr:
-                del self.id2addr[nodeID]
-            if addr in self.addr2id:
-                del self.addr2id[addr]
+            #if nodeID in self.id2addr:
+            #    del self.id2addr[nodeID]
+            #if addr in self.addr2id:
+            #    del self.addr2id[addr]
 
     def sendQueued(self, beacon):
         """
@@ -513,10 +514,10 @@ class App(CbApp):
         for m in list(self.messageQueue):
             #self.cbLog("debug", "sendQueued: messageQueue: " + str(m["destination"]) + ", " + m["function"] + ", sentAck: " + str(sentAck))
             if sentLength < 120:   # Send max of 120 bytes in a frame
-                if m["function"] == "ack":
+                if (m["function"] == "ack") or (m["function"] == "include_not"):
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
                     self.sendMessage(m["message"], self.adaptor)
-                    self.messageQueue.remove(m)  # Only send ack once
+                    self.messageQueue.remove(m)  # Only send ack and include_not once
                     sentAck.append(m["destination"])
                     sentLength += m["message"]["length"]
                 elif (m["destination"] not in self.sentTo) and (m["destination"] not in sentAck) and not beacon:
@@ -564,7 +565,7 @@ class App(CbApp):
                 m += data
             length = len(m)
             hexPayload = m.encode("hex")
-            self.cbLog("debug", "Tx: sending: " + str(hexPayload))
+            self.cbLog("debug", "formatRadioMessage, message: " + str(hexPayload))
             msg= {
                 "id": self.id,
                 "length": length,
@@ -600,7 +601,7 @@ class App(CbApp):
                 self.sendMessage(req, message["id"])
                 self.adaptor = message["id"]
         self.setState("running")
-        reactor.callLater(10, self.beacon)
+        reactor.callLater(BEACON_START_DELAY, self.beacon)
 
     def onAdaptorData(self, message):
         #self.cbLog("debug", "onAdaptorData, message: " + str(message))
@@ -619,7 +620,7 @@ class App(CbApp):
         self.cbLog("debug", "Config: " + str(json.dumps(config, indent=4)))
 
     def onConfigureMessage(self, managerConfig):
-        self.readLocalConfig()
+        #self.readLocalConfig()
         self.client = CbClient(self.id, CID, 3)
         self.client.onClientMessage = self.onClientMessage
         self.client.sendMessage = self.sendMessage
