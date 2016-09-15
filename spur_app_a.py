@@ -48,8 +48,7 @@ CID                 = "CID249"          # Client ID Dev Server
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
-#GRACE_TIME          = 120               # Time to wait after we should have heard from node before reporting it missing
-GRACE_TIME          = 20               # Time to wait after we should have heard from node before reporting it missing
+GRACE_TIME          = 120               # Time to wait after we should have heard from node before reporting it missing
 MONITOR_INTERVAL    = 10                # Check to see if nodes are overdue in waking up at this interval
 config              = {
                         "nodes": [ ]
@@ -178,6 +177,10 @@ class App(CbApp):
                         self.cbLog("debug", "onClientMessage, new partial config for new: {}".format(nodeAddr))
                         self.nodeConfig[nodeAddr] = message["config"]
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
+                elif message["function"] == "send_battery":
+                    nodeAddr = self.id2addr[int(message["node"])]
+                    self.requestBatteries.append(nodeAddr)
+                    self.cbLog("debug", "onClientMessage, added {} to requestBatteries".format(nodeAddr))
         #except Exception as ex:
         #    self.cbLog("warning", "onClientMessage exception. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
 
@@ -334,6 +337,7 @@ class App(CbApp):
         self.sendingConfig.remove(nodeAddr)
 
     def requestBattery(self, nodeAddr):
+        self.cbLog("info", "Battery/RSSI requested from {}".format(nodeAddr))
         self.requestBatteries.remove(nodeAddr)
         msg = self.formatRadioMessage(nodeAddr, "send_battery", self.setWakeup(nodeAddr))
         self.queueRadio(msg, nodeAddr, "send_battery")
@@ -358,9 +362,6 @@ class App(CbApp):
                 #hexMessage = message.encode("hex")
                 #self.cbLog("debug", "hex message after decode: " + str(hexMessage))
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
-                if source not in self.nextWakeupTime:
-                    self.cbLog("info", "node back from the dead: {}, requesting battery/rssi".format(source))
-                    self.requestBatteries.append(source)
                 if function == "include_req":
                     payload = message[10:16]
                     hexPayload = payload.encode("hex")
@@ -407,7 +408,7 @@ class App(CbApp):
                         if length == 14:
                             msg["rssi"] = rssi
                             msg["temperature"] = temperature
-                    else:    
+                    else:
                         self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}".format(source))
                         self.buttonState[source] = alertType & 0xFF
                         self.wakeupCount[source] = 0
@@ -460,7 +461,7 @@ class App(CbApp):
             if wakeup == -1:
                 self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
                 wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
-                self.nextWakeupTime[nodeAddr] = int(time.time()) + wakeup + GRACE_TIME
+                self.nextWakeupTime[nodeAddr] = int(time.time()) + wakeup*2 + GRACE_TIME
                 self.wakeupCount[nodeAddr] += 1
                 if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
                     self.wakeupCount[nodeAddr] = len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]) - 1
@@ -498,7 +499,7 @@ class App(CbApp):
         if self.beaconCalled == self.beaconInterval:
             msg = self.formatRadioMessage(0xBBBB, "beacon", 0)
             self.sendMessage(msg, self.adaptor)
-            self.sendQueued(True)
+            #self.sendQueued(True)
             self.beaconCalled = 0
             self.beaconInterval = random.randrange(5, 7, 1)
             self.cbLog("debug", "beaconInterval: {}".format(self.beaconInterval))
@@ -549,7 +550,7 @@ class App(CbApp):
         for m in list(self.messageQueue):
             #self.cbLog("debug", "sendQueued: messageQueue: " + str(m["destination"]) + ", " + m["function"] + ", sentAck: " + str(sentAck))
             if sentLength < 120:   # Send max of 120 bytes in a frame
-                if (m["function"] == "ack") or (m["function"] == "include_not"):
+                if ((m["function"] == "ack") and (m["destination"] not in sentAck)) or (m["function"] == "include_not"):
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
                     self.sendMessage(m["message"], self.adaptor)
                     self.messageQueue.remove(m)  # Only send ack and include_not once
