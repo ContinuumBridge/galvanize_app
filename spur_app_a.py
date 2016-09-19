@@ -156,6 +156,8 @@ class App(CbApp):
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
                     self.queueRadio(msg, self.id2addr[nodeID], "include_grant")
+                    if self.id2addr[nodeID] in self.requestBatteries:
+                        self.requestBatteries.remove(self.id2addr[nodeID])
                 elif message["function"] == "include_not":
                     nodeID = int(message["node"])
                     data = struct.pack(">I", nodeID)
@@ -167,7 +169,10 @@ class App(CbApp):
                     nodeAddr = self.id2addr[int(message["node"])]
                     if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
                         self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
+                        nodeID = int(message["node"])
                         self.nodeConfig[nodeAddr] = message["config"]
+                        if nodeID not in self.including:
+                            self.including.append(nodeID)  # Causes a start to be sent to node on complete config update
                     elif nodeAddr in self.nodeConfig:  # We already have some partial config
                         self.cbLog("debug", "onClientMessage, new partial config for existing: {}".format(nodeAddr))
                         for c in message["config"]:
@@ -179,7 +184,8 @@ class App(CbApp):
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
                 elif message["function"] == "send_battery":
                     nodeAddr = self.id2addr[int(message["node"])]
-                    self.requestBatteries.append(nodeAddr)
+                    if nodeAddr not in self.requestBatteries:
+                        self.requestBatteries.append(nodeAddr)
                     self.cbLog("debug", "onClientMessage, added {} to requestBatteries".format(nodeAddr))
         #except Exception as ex:
         #    self.cbLog("warning", "onClientMessage exception. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
@@ -468,8 +474,6 @@ class App(CbApp):
         if (nodeAddr in self.nodeConfig) and (nodeAddr not in self.sendingConfig):
             reactor.callLater(1, self.sendConfig, nodeAddr)
             self.sendingConfig.append(nodeAddr)
-        if (nodeAddr in self.requestBatteries):
-            self.requestBattery(nodeAddr)
         return wakeup
 
     def onAck(self, source):
@@ -556,6 +560,8 @@ class App(CbApp):
                     self.messageQueue.remove(m)  # Only send ack and include_not once
                     sentAck.append(m["destination"])
                     sentLength += m["message"]["length"]
+                    if m["destination"] in self.requestBatteries:  # Wait until an ack has been sent before requesting battery
+                        self.requestBattery(m["destination"])
                 elif (m["destination"] not in self.sentTo) and (m["destination"] not in sentAck) and not beacon:
                     self.sendMessage(m["message"], self.adaptor)
                     self.sentTo.append(m["destination"])
