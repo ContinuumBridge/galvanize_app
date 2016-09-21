@@ -367,7 +367,7 @@ class App(CbApp):
 
     def onRadioMessage(self, message):
         if self.radioOn:
-            self.cbLog("debug", "onRadioMessage")
+            #self.cbLog("debug", "onRadioMessage")
             try:
                 destination = struct.unpack(">H", message[0:2])[0]
             except Exception as ex:
@@ -387,9 +387,9 @@ class App(CbApp):
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
                 if function == "include_req":
                     length = struct.unpack(">b", message[9])[0]
-                    if length == 4:
+                    if length == 14:
                         payload = message[10:14]
-                        (nodeID) = struct.unpack(">I", payload)
+                        nodeID = struct.unpack(">I", payload)[0]
                         version = 0
                         rssi = 0
                     else:
