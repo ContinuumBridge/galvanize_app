@@ -74,6 +74,7 @@ class App(CbApp):
         self.requestBatteries   = []
         self.nextWakeupTime     = {}
         self.beaconInterval     = 6
+        self.beaconRunning      = False
         #self.ackCount          = 0           # Used purely for test of nack
 
         # Super-class init must be called
@@ -525,16 +526,15 @@ class App(CbApp):
 
     def beacon(self):
         if self.beaconCalled == self.beaconInterval:
-            msg = self.formatRadioMessage(0xBBBB, "beacon", 0)
-            self.sendMessage(msg, self.adaptor)
-            #self.sendQueued(True)
+            self.sendQueued(True)
             self.beaconCalled = 0
-            self.beaconInterval = random.randrange(5, 7, 1)
+            #self.beaconInterval = random.randrange(5, 7, 1)
+            self.beaconInterval = random.randrange(10, 14, 2)
             #self.cbLog("debug", "beaconInterval: {}".format(self.beaconInterval))
         else:
             self.beaconCalled += 1
             self.sendQueued(False)
-        reactor.callLater(1, self.beacon)
+        reactor.callLater(0.5, self.beacon)
 
     def monitor(self):
         now = time.time()
@@ -577,7 +577,7 @@ class App(CbApp):
         sentAck = []
         for m in list(self.messageQueue):
             #self.cbLog("debug", "sendQueued: messageQueue: " + str(m["destination"]) + ", " + m["function"] + ", sentAck: " + str(sentAck))
-            if sentLength < 120:   # Send max of 120 bytes in a frame
+            if sentLength < 60:   # Send max of 60 bytes in a frame if more than one message sent
                 if ((m["function"] == "ack") and (m["destination"] not in sentAck)) or (m["function"] == "include_not"):
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
                     self.sendMessage(m["message"], self.adaptor)
@@ -604,7 +604,9 @@ class App(CbApp):
                         m["attempt"] += 1
                         self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]) + ", attempt " + str(m["attempt"]))
                         sentLength += m["message"]["length"]
-                #self.cbLog("debug", "sendQueued, sentLength: " + str(sentLength))
+        if beacon and (sentLength == 0):
+            msg = self.formatRadioMessage(0xBBBB, "beacon", 0)
+            self.sendMessage(msg, self.adaptor)
 
     def formatRadioMessage(self, destination, function, wakeupInterval, data = None):
         if True:
@@ -668,7 +670,9 @@ class App(CbApp):
                 self.sendMessage(req, message["id"])
                 self.adaptor = message["id"]
         self.setState("running")
-        reactor.callLater(BEACON_START_DELAY, self.beacon)
+        if not self.beaconRunning:
+            self.beaconRunning = True
+            reactor.callLater(BEACON_START_DELAY, self.beacon)
         reactor.callLater(MONITOR_INTERVAL, self.monitor)
 
     def onAdaptorData(self, message):
