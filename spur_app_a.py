@@ -373,6 +373,7 @@ class App(CbApp):
                 destination = struct.unpack(">H", message[0:2])[0]
             except Exception as ex:
                 self.cbLog("warning", "onRadioMessage. Malformed radio message. Type: {}, exception: {}".format(type(ex), ex.args))
+                return
             #self.cbLog("debug", "Rx: destination: " + str("{0:#0{1}X}".format(destination,6)))
             if destination == SPUR_ADDRESS:
                 source, hexFunction = struct.unpack(">HB", message[2:5])
