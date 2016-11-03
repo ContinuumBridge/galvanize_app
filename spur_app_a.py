@@ -35,7 +35,7 @@ FUNCTIONS = {
 Y_STARTS = (
     (38, 0, 0 ,0, 0),
     (18, 56, 0, 0, 0),
-    (10, 40, 70, 0, 0),
+    (4, 34, 64, 0, 0),
     (4, 26, 48, 70, 0),
     (0, 20, 40, 60, 80)
 );
@@ -43,8 +43,8 @@ Y_STARTS = (
 #SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 30*60
-#CID                 = "CID157"         # Client ID Client Server
-CID                 = "CID249"          # Client ID Dev Server
+#CID                 = "CID157"         # Client ID Development/Staging
+CID                 = "CID249"          # Client ID Client Server
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
