@@ -4,6 +4,7 @@ build
 *.py[cod]
 thisbridge/*
 *.csv
+*.swn
 *.swp
 
 # C extensions
