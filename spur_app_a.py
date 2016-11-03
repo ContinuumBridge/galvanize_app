@@ -491,12 +491,19 @@ class App(CbApp):
                     self.cbLog("debug", "wakeup = 0 (2)")
                     break
             if wakeup == -1:
-                self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
-                wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
-                self.nextWakeupTime[nodeAddr] = int(time.time()) + wakeup*2 + GRACE_TIME
-                self.wakeupCount[nodeAddr] += 1
-                if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
-                    self.wakeupCount[nodeAddr] = len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]) - 1
+                try:
+                    self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
+                    wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
+                    self.nextWakeupTime[nodeAddr] = int(time.time()) + wakeup*2 + GRACE_TIME
+                except Exception as ex:
+                    self.cbLog("warning", "setWakeup, problem setting next wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
+                    wakeup = 10
+                try:
+                    self.wakeupCount[nodeAddr] += 1
+                    if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
+                        self.wakeupCount[nodeAddr] = len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]) - 1
+                except Exception as ex:
+                    self.cbLog("warning", "setWakeup, problem incrementing wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
         if (nodeAddr in self.nodeConfig) and (nodeAddr not in self.sendingConfig):
             reactor.callLater(1, self.sendConfig, nodeAddr)
             self.sendingConfig.append(nodeAddr)
