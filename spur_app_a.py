@@ -300,8 +300,8 @@ class App(CbApp):
                     formatMessage += segment
                 elif numLines == 4:
                     if firstSplit == 1:
-                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x18, "B", 0x62, 0x44, "X", 2, "Y", 0x19, "B", 0x60, 0x42, \
-                                            "X", 0x65, "Y", 0x18, "B", 0x62, 0x44, "X", 0x66, "Y", 0x19, "B", 0x60, 0x42)  
+                        segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x18, "B", 0x62, 0x48, "X", 2, "Y", 0x19, "B", 0x60, 0x46, \
+                                            "X", 0x65, "Y", 0x18, "B", 0x62, 0x48, "X", 0x66, "Y", 0x19, "B", 0x60, 0x46)  
                     elif firstSplit == 2:
                         segment = struct.pack("cBcBcBBcBcBcBBcBcBcBBcBcBcBB", "X", 1, "Y", 0x2E, "B", 0x62, 0x30, "X", 2, "Y", 0x2F, "B", 0x60, 0x2E, \
                                             "X", 0x65, "Y", 0x2E, "B", 0x62, 0x30, "X", 0x66, "Y", 0x2F, "B", 0x60, 0x2E)  
