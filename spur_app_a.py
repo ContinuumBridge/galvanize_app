@@ -30,7 +30,8 @@ FUNCTIONS = {
     "beacon": 0x0A,
     "start": 0x0B,
     "nack": 0x0C,
-    "include_not": 0x0D
+    "include_not": 0x0D,
+    "configuring": 0x0E
 }
 Y_STARTS = (
     (38, 0, 0 ,0, 0),
@@ -64,6 +65,7 @@ class App(CbApp):
         self.radioOn            = True
         self.messageQueue       = []
         self.sentTo             = []
+        self.includeGrants      = []
         self.nodeConfig         = {} 
         self.wakeups            = {}
         self.wakeupCount        = {}
@@ -157,6 +159,8 @@ class App(CbApp):
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
                     self.queueRadio(msg, self.id2addr[nodeID], "include_grant")
+                    self.cbLog("debug", "onClientMessage, adding {} to includeGrants".format(self.id2addr[nodeID]))
+                    self.includeGrants.append(self.id2addr[nodeID])
                     if self.id2addr[nodeID] in self.requestBatteries:
                         self.requestBatteries.remove(self.id2addr[nodeID])
                 elif message["function"] == "include_not":
@@ -197,6 +201,12 @@ class App(CbApp):
         formatMessage = ""
         messageCount = 0
         statesInConfig = False
+        if nodeAddr not in self.includeGrants: # Only send configuring message if not part of include_grant process
+            self.cbLog("debug", "sendConfig, sending configuring message to: {} ".format(nodeAddr))
+            msg = self.formatRadioMessage(nodeAddr, "configuring", 0, formatMessage)
+            self.queueRadio(msg, nodeAddr, "configuring")
+        else:
+            self.includeGrants.remove(nodeAddr)
         for m in self.nodeConfig[nodeAddr]:
             messageCount += 1
             self.cbLog("debug", "in m loop, m: " + m)
