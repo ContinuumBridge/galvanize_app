@@ -44,8 +44,8 @@ Y_STARTS = (
 #SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 30*60
-#CID                 = "CID157"         # Client ID Development/Staging
-CID                 = "CID249"          # Client ID Client Server
+#CID                 = "CID157"         # Client ID Staging
+CID                 = "CID249"          # Client ID Prouction
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
@@ -171,13 +171,13 @@ class App(CbApp):
                     reactor.callLater(2, self.queueRadio, msg, 0x00, "include_not")
                 elif message["function"] == "config":
                     self.cbLog("debug", "onClientMessage, message[node]: " + str(message["node"]))
+                    nodeID = int(message["node"])
                     nodeAddr = self.id2addr[int(message["node"])]
                     if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
                         self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
-                        nodeID = int(message["node"])
                         self.nodeConfig[nodeAddr] = message["config"]
-                        if nodeID not in self.including:
-                            self.including.append(nodeID)  # Causes a start to be sent to node on complete config update
+                        #if nodeID not in self.including:
+                        #    self.including.append(nodeID)  # Causes a start to be sent to node on complete config update
                     elif nodeAddr in self.nodeConfig:  # We already have some partial config
                         self.cbLog("debug", "onClientMessage, new partial config for existing: {}".format(nodeAddr))
                         for c in message["config"]:
@@ -186,6 +186,8 @@ class App(CbApp):
                     else:  # Partial config for a node we don't have any existing config for
                         self.cbLog("debug", "onClientMessage, new partial config for new: {}".format(nodeAddr))
                         self.nodeConfig[nodeAddr] = message["config"]
+                    if nodeID not in self.including:
+                        self.including.append(nodeID)  # Causes a start to be sent to node on complete config update
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
                 elif message["function"] == "send_battery":
                     nodeAddr = self.id2addr[int(message["node"])]
