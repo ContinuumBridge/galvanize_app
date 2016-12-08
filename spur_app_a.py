@@ -54,6 +54,7 @@ MONITOR_INTERVAL    = 10                # Check to see if nodes are overdue in w
 config              = {
                         "nodes": [ ]
 }
+DEFAULT_WAKEUP_INTERVAL = 21600        # How often a node wakes up = 6 hours
 
 class App(CbApp):
     def __init__(self, argv):
@@ -365,7 +366,7 @@ class App(CbApp):
                     else:
                         if nodeAddr not in self.wakeups:
                             self.wakeups[nodeAddr] = {}
-                        self.wakeups[nodeAddr][self.nodeConfig[nodeAddr][m]["alert"]] = [240]
+                        self.wakeups[nodeAddr][self.nodeConfig[nodeAddr][m]["alert"]] = [DEFAULT_WAKEUP_INTERVAL]
             self.cbLog("debug", "sendConfig added to wakeups nodeAddr: {}, nodeID: {}".format(nodeAddr, nodeID))
             self.cbLog("debug", "sendConfig wakeups: " + str(json.dumps(self.wakeups, indent=4)))
             self.cbLog("debug", "sendConfig wakeupCount: " + str(json.dumps(self.wakeupCount, indent=4)))
@@ -509,7 +510,7 @@ class App(CbApp):
                     self.nextWakeupTime[nodeAddr] = int(time.time()) + wakeup*2 + GRACE_TIME
                 except Exception as ex:
                     self.cbLog("warning", "setWakeup, problem setting next wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
-                    wakeup = 10
+                    wakeup = 240
                 try:
                     self.wakeupCount[nodeAddr] += 1
                     if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
