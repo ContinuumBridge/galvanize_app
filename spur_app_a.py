@@ -49,7 +49,7 @@ CID                 = "CID249"          # Client ID Prouction
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
-GRACE_TIME          = 120               # Time to wait after we should have heard from node before reporting it missing
+GRACE_TIME_MULT     = 1.2               # Time to wait after we should have heard from node before reporting it missing
 MONITOR_INTERVAL    = 10                # Check to see if nodes are overdue in waking up at this interval
 config              = {
                         "nodes": [ ]
@@ -61,7 +61,9 @@ class App(CbApp):
         self.appClass           = "control"
         self.state              = "stopped"
         self.id2addr            = {}          # Node id to node address mapping
+        self.id2addr[0]         = 0           # For including
         self.addr2id            = {}          # Node address to node if mapping
+        self.addr2id[0]         = 0
         self.maxAddr            = 0
         self.radioOn            = True
         self.messageQueue       = []
@@ -454,7 +456,7 @@ class App(CbApp):
                             msg["rssi"] = rssi
                             msg["temperature"] = temperature
                     else:
-                        self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}".format(source))
+                        self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}, id: {}".format(source, self.addr2id[source]))
                         self.buttonState[source] = alertType & 0xFF
                         self.wakeupCount[source] = 0
                         msg = {
@@ -475,7 +477,7 @@ class App(CbApp):
                         self.queueRadio(msg, source, "ack")
                     #self.ackCount += 1
                 elif function == "woken_up":
-                    self.cbLog("debug", "Rx, woken_up")
+                    self.cbLog("debug", "Rx, woken_up from id: {}".format(self.addr2id[source]))
                     msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
                     self.queueRadio(msg, source, "ack")
                     msg = {
@@ -489,15 +491,16 @@ class App(CbApp):
                     self.cbLog("warning", "onRadioMessage, undefined message, source " + str(source) + ", function: " + function)
 
     def setWakeup(self, nodeAddr):
+        nodeID = self.addr2id[nodeAddr]
         wakeup = -1
-        self.cbLog("debug", "setWakeup, nodeAddr: " + str(nodeAddr) + ", self.buttonState: " + str(self.buttonState))
+        self.cbLog("debug", "setWakeup, nodeAddr: {}, id: {}, buttonState: {}".format(nodeAddr, nodeID, self.buttonState))
         self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.including: " + str(self.including))
         self.cbLog("debug", "setWakeup, requestBatteries: {}".format(self.requestBatteries))
-        if (nodeAddr in self.nodeConfig) or (self.addr2id[nodeAddr] in self.including) or (nodeAddr in self.requestBatteries):
+        if (nodeAddr in self.nodeConfig) or (nodeID in self.including) or (nodeAddr in self.requestBatteries):
             wakeup = 0;
             self.cbLog("debug", "wakeup = 0 (1)")
         else:
-            self.cbLog("debug", "setWakeup, messageQueue (2): " + str(json.dumps(self.messageQueue, indent=4)))
+            #self.cbLog("debug", "setWakeup, messageQueue (2): " + str(json.dumps(self.messageQueue, indent=4)))
             for m in self.messageQueue:
                 if m["destination"] == nodeAddr:
                     wakeup = 0;
@@ -507,10 +510,11 @@ class App(CbApp):
                 try:
                     self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
                     wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
-                    self.nextWakeupTime[nodeAddr] = int(time.time()) + wakeup*2 + GRACE_TIME
+                    self.nextWakeupTime[nodeAddr] = int(time.time() + wakeup*2*GRACE_TIME_MULT)
+                    self.cbLog("debug", "setWakeup for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
                 except Exception as ex:
                     self.cbLog("warning", "setWakeup, problem setting next wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
-                    wakeup = 240
+                    wakeup = 3600
                 try:
                     self.wakeupCount[nodeAddr] += 1
                     if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
@@ -526,7 +530,8 @@ class App(CbApp):
         """ If there is no more data to send, we need to send an ack with a normal wakeup 
             time to ensure that the node goes to sleep.
         """
-        self.cbLog("debug", "onAck, source: " + str("{0:#0{1}x}".format(source,6)))
+        self.cbLog("debug", "onAck, source: {}".format(source))
+        #self.cbLog("debug", "onAck, source: " + str("{0:#0{1}x}".format(source,6)))
         #self.cbLog("debug", "onAck, messageQueue: " + str(json.dumps(self.messageQueue, indent=4)))
         #self.cbLog("debug", "onAck, source: " + str(source) + ", self.sentTo: " + str(self.sentTo))
         if source in self.sentTo:
@@ -534,7 +539,7 @@ class App(CbApp):
             for m in list(self.messageQueue):
                 if m["destination"] == source:
                     if m["attempt"] > 0:
-                        self.cbLog("debug", "onAck, removing message: " + m["function"] + " for: " + str(source))
+                        self.cbLog("debug", "onAck, removing message: " + m["function"] + " for: " + str(source) + ", id:" + str(self.addr2id[source]))
                         self.messageQueue.remove(m)
                         self.sentTo.remove(source)
                     else:
