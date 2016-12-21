@@ -43,9 +43,11 @@ Y_STARTS = (
 
 #SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 SPUR_ADDRESS        = int(CB_BID[3:])
-CHECK_INTERVAL      = 30*60
-#CID                 = "CID157"         # Client ID Staging
-CID                 = "CID249"          # Client ID Prouction
+#CHECK_INTERVAL      = 30*60
+CHECK_INTERVAL      = 90
+TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
+CID                 = "CID157"         # Client ID Staging
+#CID                 = "CID249"          # Client ID Prouction
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
