@@ -242,6 +242,9 @@ class App(CbApp):
                 self.cbLog("debug", "statesInConfig")
                 s = self.nodeConfig[nodeAddr][m]
                 self.cbLog("debug", "nodeConfig before changing: " + str(json.dumps(s, indent=4)))
+                if "delayValue" in s:
+                    if s["delayValue"] > 254:
+                        s["delayValue"] = 254
                 for f in ("SingleLeft", "SingleRight", "DoubleLeft", "DoubleRight", "messageValue", "messageState", "delayValue", "delayState"):
                     if f not in s:
                         s[f] = 0xFF
