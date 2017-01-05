@@ -43,8 +43,7 @@ Y_STARTS = (
 
 #SPUR_ADDRESS = int(os.getenv('CB_SPUR_ADDRESS', '0x0000'), 16)
 SPUR_ADDRESS        = int(CB_BID[3:])
-#CHECK_INTERVAL      = 30*60
-CHECK_INTERVAL      = 90
+CHECK_INTERVAL      = 1800
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
 #CID                 = "CID157"         # Client ID Staging
 CID                 = "CID249"          # Client ID Production
