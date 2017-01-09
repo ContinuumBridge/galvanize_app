@@ -158,7 +158,7 @@ class App(CbApp):
                         self.cbLog("debug", "id2addr: " + str(self.id2addr))
                         self.addr2id[self.maxAddr] = nodeID
                         self.cbLog("debug", "addr2id: " + str(self.addr2id))
-                        self.buttonState[self.maxAddr] = 0xFF
+                        self.buttonState[self.maxAddr] = 0
                         self.save()
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
@@ -194,6 +194,7 @@ class App(CbApp):
                         self.including.append(nodeID)  # Causes a start to be sent to node on complete config update
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
                 elif message["function"] == "send_battery":
+                    self.cbLog("debug", "onClientMessage, send_battery for {}".format(message["node"]))
                     nodeAddr = self.id2addr[int(message["node"])]
                     if nodeAddr not in self.requestBatteries:
                         self.requestBatteries.append(nodeAddr)
