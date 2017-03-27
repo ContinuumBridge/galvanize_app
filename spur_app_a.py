@@ -257,8 +257,8 @@ class App(CbApp):
                 formatMessage = struct.pack("cB", "A", self.nodeConfig[nodeAddr][m])
             if aMessage:
                 self.cbLog("debug", "sendConfig, aMessage")
-                #display = base64.b64decode(self.nodeConfig[nodeAddr][m])
-                display = self.nodeConfig[nodeAddr][m]
+                display = base64.b64decode(self.nodeConfig[nodeAddr][m])
+                #display = self.nodeConfig[nodeAddr][m]
                 self.cbLog("debug", "sendConfig, display: {}".format(display))
                 lines = display.split("\n")
                 firstSplit = None 
