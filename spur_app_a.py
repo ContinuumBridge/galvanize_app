@@ -46,8 +46,8 @@ Y_STARTS = (
 SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 1800
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
-CID                 = "CID157"         # Client ID Staging
-#CID                 = "CID249"          # Client ID Production
+#CID                 = "CID157"         # Client ID Staging
+CID                 = "CID249"          # Client ID Production
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
@@ -76,6 +76,7 @@ class App(CbApp):
         self.wakeupCount        = {}
         self.beaconCalled       = 0
         self.including          = []
+        self.configuring        = []
         self.sendingConfig      = []
         self.buttonState        = {}
         self.requestBatteries   = []
@@ -164,7 +165,8 @@ class App(CbApp):
                         self.save()
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
-                    self.queueRadio(msg, self.id2addr[nodeID], "include_grant")
+                    # If everything happens too quickly, a button may not be ready for include_grant, so add a delay
+                    reactor.callLater(0.5, self.queueRadio, msg, self.id2addr[nodeID], "include_grant")
                     self.cbLog("debug", "onClientMessage, adding {} to includeGrants".format(self.id2addr[nodeID]))
                     self.includeGrants.append(self.id2addr[nodeID])
                     if self.id2addr[nodeID] in self.requestBatteries:
@@ -182,8 +184,6 @@ class App(CbApp):
                     if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
                         self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
                         self.nodeConfig[nodeAddr] = message["config"]
-                        #if nodeID not in self.including:
-                        #    self.including.append(nodeID)  # Causes a start to be sent to node on complete config update
                     elif nodeAddr in self.nodeConfig:  # We already have some partial config
                         self.cbLog("debug", "onClientMessage, new partial config for existing: {}".format(nodeAddr))
                         for c in message["config"]:
@@ -192,8 +192,8 @@ class App(CbApp):
                     else:  # Partial config for a node we don't have any existing config for
                         self.cbLog("debug", "onClientMessage, new partial config for new: {}".format(nodeAddr))
                         self.nodeConfig[nodeAddr] = message["config"]
-                    if nodeID not in self.including:
-                        self.including.append(nodeID)  # Causes a start to be sent to node on complete config update
+                    if nodeID not in self.configuring:
+                        self.configuring.append(nodeID)  # Causes a start to be sent to node on complete config update
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
                 elif message["function"] == "send_battery":
                     self.cbLog("debug", "onClientMessage, send_battery for {}".format(message["node"]))
@@ -378,14 +378,14 @@ class App(CbApp):
                 self.cbLog("warning", "sendConfig, expection sending app_value. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
         nodeID =  self.addr2id[nodeAddr]
         try:
-            if nodeID in list(self.including):
-                self.cbLog("debug", "Removing nodeID " + str(nodeID) + " from " + str(self.including))
+            if nodeID in list(self.configuring):
+                self.cbLog("debug", "Removing nodeID " + str(nodeID) + " from " + str(self.configuring))
                 if not appValueMessage:
                     msg = self.formatRadioMessage(nodeAddr, "start", PRESSED_WAKEUP, formatMessage)
                     self.queueRadio(msg, nodeAddr, "start")
-                self.including.remove(nodeID)
+                self.configuring.remove(nodeID)
         except Exception as ex:
-            self.cbLog("warning", "sendConfig, expection in removing from self.including. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+            self.cbLog("warning", "sendConfig, expection in removing from self.configuring. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
         self.cbLog("debug", "sendConfig statesInConfig: {}".format(statesInConfig))
         if statesInConfig:
             self.wakeupCount[nodeAddr] = 0
@@ -533,9 +533,9 @@ class App(CbApp):
         """
         wakeup = -1
         self.cbLog("debug", "setWakeup, nodeAddr: {}, id: {}, buttonState: {}".format(nodeAddr, nodeID, self.buttonState))
-        self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.including: " + str(self.including))
+        self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.configuring: " + str(self.configuring))
         self.cbLog("debug", "setWakeup, requestBatteries: {}".format(self.requestBatteries))
-        if (nodeAddr in self.nodeConfig) or (nodeID in self.including) or (nodeAddr in self.requestBatteries):
+        if (nodeAddr in self.nodeConfig) or (nodeID in self.configuring) or (nodeAddr in self.requestBatteries):
             wakeup = 0;
             self.nextWakeupTime[nodeAddr] = int(time.time() + 720)  # Time to allow before excluding when configuring
             self.cbLog("debug", "setWakeup 0 (1) for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
@@ -585,7 +585,7 @@ class App(CbApp):
                         self.sentTo.remove(source)
                     else:
                         moreToCome = True
-            if not moreToCome and (self.addr2id[source] not in self.including):
+            if not moreToCome and (self.addr2id[source] not in self.configuring):
                 msg = self.formatRadioMessage(source, "ack", PRESSED_WAKEUP)  # Shorter wakeup immediately after config
                 self.queueRadio(msg, source, "ack")
         else:
@@ -620,6 +620,8 @@ class App(CbApp):
 
     def removeNodeMessages(self, nodeID):
         #Remove all queued messages and reference to a node if we get a new include_req
+        self.cbLog("debug", "removeNodeMessages, nodeID: {}, address: {}".format(nodeID, self.id2addr[nodeID]))
+        self.cbLog("debug", "removeNodeMessages, messageQueue: {}".format(self.messageQueue))
         if nodeID in self.id2addr:
             addr = self.id2addr[nodeID]
             for m in list(self.messageQueue):
@@ -628,12 +630,18 @@ class App(CbApp):
                     self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
             if addr in self.nodeConfig:
                 del self.nodeConfig[addr]
-            if addr in self.buttonState:
-                del self.buttonState[addr]
-            #if nodeID in self.id2addr:
-            #    del self.id2addr[nodeID]
+            #if addr in self.buttonState:
+            #    del self.buttonState[addr]
+            if self.id2addr[nodeID] in self.sentTo:
+                self.sentTo.remove(addr)
+                self.cbLog("debug", "removeNodeMessages,removed from sentTo: {}".format(nodeID))
+                #del self.id2addr[nodeID]
             #if addr in self.addr2id:
             #    del self.addr2id[addr]
+            #if addr in self.wakeupCount:
+            #    del self.wakeupCount[addr]
+            #if addr in self.wakeups:
+            #    del self.wakeups[addr]
 
     def sendQueued(self, beacon):
         """
@@ -641,10 +649,11 @@ class App(CbApp):
         """
         now = time.time()
         sentLength = 0
+        removed = False  # Stops sending more messages if node has just been removed
         sentAck = []
         for m in list(self.messageQueue):
-            #self.cbLog("debug", "sendQueued: messageQueue: " + str(m["destination"]) + ", " + m["function"] + ", sentAck: " + str(sentAck))
-            if sentLength < 60:   # Send max of 60 bytes in a frame if more than one message sent
+            #self.cbLog("debug", "sendQueued: {}, {}, sentTo: {}".format(m["destination"], m["function"], self.sentTo))
+            if (sentLength < 60) and not removed:   # Send max of 60 bytes in a frame if more than one message sent
                 if ((m["function"] == "ack") and (m["destination"] not in sentAck)) or (m["function"] == "include_not"):
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]))
                     self.sendMessage(m["message"], self.adaptor)
@@ -661,9 +670,10 @@ class App(CbApp):
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]) + ", attempt " + str(m["attempt"]))
                     sentLength += m["message"]["length"]
                 elif (now - m["sentTime"] > 9) and (m["destination"] not in sentAck) and (m["attempt"] > 0) and not beacon:
-                    if m["attempt"] > 3:
-                        self.messageQueue.remove(m)
+                    if m["attempt"] > 5:
                         self.sentTo.remove(m["destination"])
+                        self.removeNodeMessages(self.addr2id[m["destination"]])
+                        removed = True
                         self.cbLog("debug", "sendQueued: No ack, removed: " + m["function"] + ", for " + str(m["destination"]))
                     else:
                         self.sendMessage(m["message"], self.adaptor)
@@ -711,6 +721,7 @@ class App(CbApp):
             self.cbLog("warning", "Problem formatting message. Exception: " + str(type(ex)) + ", " + str(ex.args))
 
     def queueRadio(self, msg, destination, function):
+        self.cbLog("debug", "queueRadio, queuing {} for {}".format(function, destination))
         toQueue = {
             "message": msg,
             "destination": destination,
