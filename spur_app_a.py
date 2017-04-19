@@ -254,17 +254,25 @@ class App(CbApp):
                 s = self.nodeConfig[nodeAddr][m]
                 self.cbLog("debug", "nodeConfig before changing: " + str(json.dumps(s, indent=4)))
                 if "delayValue" in s:
-                    if s["delayValue"] > 254:
+                    if s["delayValue"] < 4:
+                        s["delayValue"] = 4  # To prevent accidental delays of a day
+                    s["delayValue"] = s["delayValue"] >> 1
+                    if s["delayValue"] < 256:
+                        s["delayMS"] = 0xFF
+                    else:
+                        s["delayMS"] = (s["delayValue"]  >> 8) & 0xFF 
+                        s["delayValue"] = s["delayValue"] & 0xFF
+                    if s["delayValue"] == 255:
                         s["delayValue"] = 254
                 for f in ("SingleLeft", "SingleRight", "DoubleLeft", "DoubleRight", "messageValue", "messageState", \
-                    "delayValue", "delayState", "appValue", "appState"):
+                    "delayValue", "delayMS", "delayState", "appValue", "appState"):
                     if f not in s:
                         s[f] = 0xFF
                 #self.cbLog("debug", "nodeConfig before sending: " + str(json.dumps(self.nodeConfig[nodeAddr][m], indent=4)))
                 self.cbLog("debug", "nodeConfig before sending: " + str(json.dumps(s, indent=4)))
                 formatMessage = struct.pack("cBBBBBBBBBBBBBBBB", "M", s["state"], s["state"], s["alert"], s["DoubleLeft"], \
                     s["SingleLeft"], 0xFF, 0xFF, s["SingleRight"], s["DoubleRight"], s["appValue"], s["appState"], \
-                    s["delayValue"], s["delayState"], 0xFF, 0xFF, 0xFF)
+                    s["delayValue"], s["delayState"], s["delayMS"], 0xFF, 0xFF)
             elif m == "app_value":
                 appValue = True
                 appValueMessage = struct.pack("cB", "A", self.nodeConfig[nodeAddr][m])
@@ -555,7 +563,11 @@ class App(CbApp):
                     self.cbLog("debug", "setWakeup (-1) for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
                 except Exception as ex:
                     self.cbLog("warning", "setWakeup, problem setting next wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
-                    wakeup = 3600
+                    wakeup = 7200
+                    try:
+                        self.nextWakeupTime[nodeAddr] = int(time.time() + wakeup*2*GRACE_TIME_MULT)
+                    except Exception as ex:
+                        self.cbLog("warning", "setWakeup, problem setting nextWakeupTime for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
                 try:
                     self.wakeupCount[nodeAddr] += 1
                     if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
@@ -563,7 +575,7 @@ class App(CbApp):
                 except Exception as ex:
                     self.cbLog("warning", "setWakeup, problem incrementing wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
         if (nodeAddr in self.nodeConfig) and (nodeAddr not in self.sendingConfig):
-            reactor.callLater(1, self.sendConfig, nodeAddr)
+            reactor.callLater(3, self.sendConfig, nodeAddr)  # Delay of 3 gives time for node to update screen and turn on radio
             self.sendingConfig.append(nodeAddr)
         return wakeup
 
