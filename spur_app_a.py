@@ -632,28 +632,31 @@ class App(CbApp):
 
     def removeNodeMessages(self, nodeID):
         #Remove all queued messages and reference to a node if we get a new include_req
-        self.cbLog("debug", "removeNodeMessages, nodeID: {}, address: {}".format(nodeID, self.id2addr[nodeID]))
-        self.cbLog("debug", "removeNodeMessages, messageQueue: {}".format(self.messageQueue))
-        if nodeID in self.id2addr:
-            addr = self.id2addr[nodeID]
-            for m in list(self.messageQueue):
-                if m["destination"] == addr:
-                    self.messageQueue.remove(m)
-                    self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
-            if addr in self.nodeConfig:
-                del self.nodeConfig[addr]
-            #if addr in self.buttonState:
-            #    del self.buttonState[addr]
-            if self.id2addr[nodeID] in self.sentTo:
-                self.sentTo.remove(addr)
-                self.cbLog("debug", "removeNodeMessages,removed from sentTo: {}".format(nodeID))
-                #del self.id2addr[nodeID]
-            #if addr in self.addr2id:
-            #    del self.addr2id[addr]
-            #if addr in self.wakeupCount:
-            #    del self.wakeupCount[addr]
-            #if addr in self.wakeups:
-            #    del self.wakeups[addr]
+        try:
+            self.cbLog("debug", "removeNodeMessages, nodeID: {}, address: {}".format(nodeID, self.id2addr[nodeID]))
+            self.cbLog("debug", "removeNodeMessages, messageQueue: {}".format(self.messageQueue))
+            if nodeID in self.id2addr:
+                addr = self.id2addr[nodeID]
+                for m in list(self.messageQueue):
+                    if m["destination"] == addr:
+                        self.messageQueue.remove(m)
+                        self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
+                if addr in self.nodeConfig:
+                    del self.nodeConfig[addr]
+                #if addr in self.buttonState:
+                #    del self.buttonState[addr]
+                if self.id2addr[nodeID] in self.sentTo:
+                    self.sentTo.remove(addr)
+                    self.cbLog("debug", "removeNodeMessages,removed from sentTo: {}".format(nodeID))
+                    #del self.id2addr[nodeID]
+                #if addr in self.addr2id:
+                #    del self.addr2id[addr]
+                #if addr in self.wakeupCount:
+                #    del self.wakeupCount[addr]
+                #if addr in self.wakeups:
+                #    del self.wakeups[addr]
+        except Exception as ex:
+            self.cbLog("warning", "removeNodeMessages, cannot remove messages for {}. Type: {}, exception: {}".format(nodeID, type(ex), ex.args))
 
     def sendQueued(self, beacon):
         """
