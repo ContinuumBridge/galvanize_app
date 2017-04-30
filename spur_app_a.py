@@ -71,7 +71,6 @@ class App(CbApp):
         self.id2addr[0]         = 0           # For including
         self.addr2id            = {}          # Node address to node if mapping
         self.addr2id[0]         = 0
-        self.maxAddr            = 0
         self.radioOn            = True
         self.messageQueue       = []
         self.sentTo             = []
@@ -88,7 +87,7 @@ class App(CbApp):
         self.nextWakeupTime     = {}
         self.beaconInterval     = 6
         self.beaconRunning      = False
-        self.findingRSSI        = None
+        self.findingRssiAddr        = None
         #self.testCount         = 0           # Test use only
         #self.ackCount          = 0           # Used purely for test of nack
 
@@ -106,7 +105,6 @@ class App(CbApp):
         state = {
             "id2addr": self.id2addr,
             "addr2id": self.addr2id,
-            "maxAddr": self.maxAddr,
             "buttonState": self.buttonState,
             "wakeupCount": self.wakeupCount,
             "wakeups": self.wakeups
@@ -127,7 +125,6 @@ class App(CbApp):
                 self.cbLog("debug", "Loaded saved state: " + str(json.dumps(state, indent=4)))
                 self.id2addr = state["id2addr"]
                 self.addr2id = state["addr2id"]
-                self.maxAddr = state["maxAddr"]
                 self.buttonState = state["buttonState"]
                 self.wakeupCount = state["wakeupCount"]
                 self.wakeups = state["wakeups"]
@@ -158,16 +155,12 @@ class App(CbApp):
             self.cbLog("debug", "onClientMessage, message: " + str(json.dumps(message, indent=4)))
             if "function" in message:
                 if message["function"] == "include_grant":
-                    nodeID = int(message["node"])
-                    self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, id2addr: {}".format(nodeID, self.id2addr))
+                    nodeID = int(message["id"])
+                    addr = int(message["addr"])
+                    self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, addr: {}".format(nodeID, addr))
                     if nodeID not in self.id2addr:
-                        self.cbLog("debug", "onClientMessage, nodeID not in id2addr")
-                        self.maxAddr += 1
-                        self.id2addr[nodeID] = self.maxAddr
-                        self.cbLog("debug", "id2addr: " + str(self.id2addr))
-                        self.addr2id[self.maxAddr] = nodeID
-                        self.cbLog("debug", "addr2id: " + str(self.addr2id))
-                        self.buttonState[self.maxAddr] = 0
+                        self.id2addr[nodeID] = addr
+                        self.addr2id[addr] = nodeID
                         self.save()
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
@@ -178,15 +171,15 @@ class App(CbApp):
                     if self.id2addr[nodeID] in self.requestBatteries:
                         self.requestBatteries.remove(self.id2addr[nodeID])
                 elif message["function"] == "include_not":
-                    nodeID = int(message["node"])
+                    nodeID = int(message["id"])
                     data = struct.pack(">I", nodeID)
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_not", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
                     self.queueRadio(msg, 0x00, "include_not")
                     reactor.callLater(2, self.queueRadio, msg, 0x00, "include_not")
                 elif message["function"] == "config":
-                    self.cbLog("debug", "onClientMessage, message[node]: " + str(message["node"]))
-                    nodeID = int(message["node"])
-                    nodeAddr = self.id2addr[int(message["node"])]
+                    self.cbLog("debug", "onClientMessage, message[node]: " + str(message["id"]))
+                    nodeID = int(message["id"])
+                    nodeAddr = self.id2addr[int(message["id"])]
                     if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
                         self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
                         self.nodeConfig[nodeAddr] = message["config"]
@@ -202,15 +195,21 @@ class App(CbApp):
                         self.configuring.append(nodeID)  # Causes a start to be sent to node on complete config update
                     self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
                 elif message["function"] == "send_battery":
-                    self.cbLog("debug", "onClientMessage, send_battery for {}".format(message["node"]))
-                    nodeAddr = self.id2addr[int(message["node"])]
+                    self.cbLog("debug", "onClientMessage, send_battery for {}".format(message["id"]))
+                    nodeAddr = self.id2addr[int(message["id"])]
                     if nodeAddr not in self.requestBatteries:
                         self.requestBatteries.append(nodeAddr)
                         self.cbLog("debug", "onClientMessage, added {} to requestBatteries".format(nodeAddr))
                     else:
                         self.cbLog("debug", "onClientMessage, requestBatteries for {}, but already one in queue".format(nodeAddr))
+                elif message["function"] == "update_address":
+                    nodeID = int(message["id"])
+                    addr = int(message["addr"])
+                    self.id2addr[nodeID] = addr
+                    self.addr2id[addr] = nodeID
+                    self.save()
                 elif message["function"] == "reset":
-                    nodeAddr = self.id2addr[int(message["node"])]
+                    nodeAddr = self.id2addr[int(message["id"])]
                     msg = self.formatRadioMessage(nodeAddr, "reset", 0)
                     self.queueRadio(msg, nodeAddr, "reset")
         #except Exception as ex:
@@ -428,8 +427,8 @@ class App(CbApp):
         msg = self.formatRadioMessage(nodeAddr, "send_battery", self.setWakeup(nodeAddr))
         self.queueRadio(msg, nodeAddr, "send_battery")
 
-    def findRSSI(self, source):
-        self.findingRSSI =  source
+    def findRSSI(self, source, nodeID=None):
+        self.findingRssiAddr = source
         msg= {
             "id": self.id,
             "request": "command",
@@ -438,13 +437,15 @@ class App(CbApp):
         self.sendMessage(msg, self.adaptor)
 
     def onRSSI(self, rssi):
-        self.cbLog("debug", "RSSI for {}: {}".format(self.findingRSSI, rssi))
+        self.cbLog("debug", "RSSI for {}: {}".format(self.findingRssiAddr, rssi))
         msg = {
             "function": "rssi",
-            "address": self.findingRSSI,
+            "address": self.findingRssiAddr,
             "rssi": rssi
         }
-        self.findingRSSI = None
+        if self.findingRssiAddr in self.addr2id:
+            msg["buttonId"] = self.addr2id[self.findingRssiAddr]
+        self.findingRssiAddr = None
         self.client.send(msg)
 
     def onRadioMessage(self, message):
@@ -465,8 +466,16 @@ class App(CbApp):
             except:
                 function = "undefined"
             if function == "woken_up":
-                self.findRSSI(source)
-            if (source not in self.addr2id) and source != 0:
+                if "source" in self.addr2id:
+                    nodeID = self.addr2id[source]
+                else:
+                    nodeID = None
+                self.findRSSI(source, nodeID)
+            if (function == "include_req" and destination != SPUR_ADDRESS):
+                payload = message[10:14]
+                nodeID = struct.unpack(">I", payload)[0]
+                self.findRSSI(source, nodeID)
+            if (destination == SPUR_ADDRESS) and (source not in self.addr2id) and source != 0:
                 self.cbLog("warning", "Radio message for node at unallocated address: " + str(source))
                 return
                 #hexMessage = message.encode("hex")
@@ -690,7 +699,7 @@ class App(CbApp):
         """
         In frames where a beacon is sent, don't send anything else apart from acks.
         """
-        if self.findingRSSI:
+        if self.findingRssiAddr:
             return
         now = time.time()
         sentLength = 0
