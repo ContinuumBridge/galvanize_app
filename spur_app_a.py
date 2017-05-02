@@ -51,8 +51,8 @@ Y_STARTS = (
 SPUR_ADDRESS        = 0x8000 | int(CB_BID[3:])
 CHECK_INTERVAL      = 1800
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
-#CID                 = "CID157"         # Client ID Staging
-CID                 = "CID249"          # Client ID Production
+CID                 = "CID157"         # Client ID Staging
+#CID                 = "CID249"          # Client ID Production
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
@@ -432,18 +432,26 @@ class App(CbApp):
         self.findingRSSI =  source
         msg= {
             "id": self.id,
-            "length": length,
             "request": "command",
             "command": "get_rssi"
         }
         self.sendMessage(msg, self.adaptor)
 
     def onRSSI(self, rssi):
-    
+        self.cbLog("debug", "RSSI for {}: {}".format(self.findingRSSI, rssi))
+        msg = {
+            "function": "rssi",
+            "address": self.findingRSSI,
+            "rssi": rssi
+        }
+        self.findingRSSI = None
+        self.client.send(msg)
 
     def onRadioMessage(self, message):
         if self.radioOn:
-            self.cbLog("debug", "onRadioMessage")
+            self.cbLog("debug", "onRadioMessage, length: {}".format(len(message)))
+            if len(message) < 6:
+                return
             try:
                 destination = struct.unpack(">H", message[0:2])[0]
             except Exception as ex:
@@ -781,6 +789,7 @@ class App(CbApp):
                                    },
                                    {"characteristic": "rssi",
                                     "interval": 0
+                                   }
                                   ]
                       }
                 self.sendMessage(req, message["id"])
