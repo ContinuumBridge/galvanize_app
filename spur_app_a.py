@@ -444,8 +444,9 @@ class App(CbApp):
             "rssi": rssi
         }
         if self.findingRssiAddr in self.addr2id:
-            msg["buttonId"] = self.addr2id[self.findingRssiAddr]
+            msg["id"] = self.addr2id[self.findingRssiAddr]
         self.findingRssiAddr = None
+	self.cbLog("debug", "sending message to client: {}".format(msg))
         self.client.send(msg)
 
     def onRadioMessage(self, message):
