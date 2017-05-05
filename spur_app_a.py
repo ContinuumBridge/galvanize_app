@@ -437,7 +437,7 @@ class App(CbApp):
         self.sendMessage(msg, self.adaptor)
 
     def onRSSI(self, rssi):
-        self.cbLog("debug", "RSSI for {}: {}".format(self.findingRssiAddr, rssi))
+        self.cbLog("debug", "RSSI for {}: {}, type: {}".format(self.findingRssiAddr, rssi, type(self.findingRssiAddr)))
         msg = {
             "function": "rssi",
             "address": self.findingRssiAddr,
