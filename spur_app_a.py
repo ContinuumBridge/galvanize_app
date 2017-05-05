@@ -48,7 +48,7 @@ Y_STARTS = (
     (0, 20, 40, 60, 80)
 );
 
-SPUR_ADDRESS        = 0x8000 | int(CB_BID[3:])
+SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 1800
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
 CID                 = "CID157"         # Client ID Staging
@@ -156,7 +156,7 @@ class App(CbApp):
             if "function" in message:
                 if message["function"] == "include_grant":
                     nodeID = int(message["id"])
-                    addr = int(message["addr"])
+                    addr = int(message["address"])
                     self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, addr: {}".format(nodeID, addr))
                     if nodeID not in self.id2addr:
                         self.id2addr[nodeID] = addr
@@ -204,7 +204,7 @@ class App(CbApp):
                         self.cbLog("debug", "onClientMessage, requestBatteries for {}, but already one in queue".format(nodeAddr))
                 elif message["function"] == "update_address":
                     nodeID = int(message["id"])
-                    addr = int(message["addr"])
+                    addr = int(message["address"])
                     self.id2addr[nodeID] = addr
                     self.addr2id[addr] = nodeID
                     self.save()
@@ -458,26 +458,26 @@ class App(CbApp):
             except Exception as ex:
                 self.cbLog("warning", "onRadioMessage. Malformed radio message. Type: {}, exception: {}".format(type(ex), ex.args))
                 return
-            #self.cbLog("debug", "Rx: destination: " + str("{0:#0{1}X}".format(destination,6)))
-            #if destination == SPUR_ADDRESS:
+            self.cbLog("debug", "Rx: destination: " + str("{0:#0{1}X}".format(destination,6)))
             source, hexFunction = struct.unpack(">HB", message[2:5])
             try:
                 function = (key for key,value in FUNCTIONS.items() if value==hexFunction).next()
             except:
                 function = "undefined"
-            if function == "woken_up":
+            self.cbLog("debug", "source: {}, function: {}".format(source, function))
+            if function == "woken_up" and destination != SPUR_ADDRESS:
                 if "source" in self.addr2id:
                     nodeID = self.addr2id[source]
                 else:
                     nodeID = None
                 self.findRSSI(source, nodeID)
             if (function == "include_req" and destination != SPUR_ADDRESS):
+                self.cbLog("debug", "include_req for a different bridge")
                 payload = message[10:14]
                 nodeID = struct.unpack(">I", payload)[0]
                 self.findRSSI(source, nodeID)
-            if (destination == SPUR_ADDRESS) and (source not in self.addr2id) and source != 0:
-                self.cbLog("warning", "Radio message for node at unallocated address: " + str(source))
-                return
+            #if (destination == SPUR_ADDRESS) and (source not in self.addr2id) and source != 0:
+            if (destination == SPUR_ADDRESS):
                 #hexMessage = message.encode("hex")
                 #self.cbLog("debug", "hex message after decode: " + str(hexMessage))
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
