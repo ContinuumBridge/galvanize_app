@@ -446,7 +446,7 @@ class App(CbApp):
         if self.findingRssiAddr in self.addr2id:
             msg["id"] = self.addr2id[self.findingRssiAddr]
         self.findingRssiAddr = None
-	self.cbLog("debug", "sending message to client: {}".format(msg))
+        self.cbLog("debug", "sending message to client: {}".format(msg))
         self.client.send(msg)
 
     def onRadioMessage(self, message):
@@ -474,8 +474,8 @@ class App(CbApp):
                 self.findRSSI(source, nodeID)
             if (function == "include_req" and destination != SPUR_ADDRESS):
                 self.cbLog("debug", "include_req for a different bridge")
-                payload = message[10:14]
-                nodeID = struct.unpack(">I", payload)[0]
+                payload = message[10:16]
+                (nodeID, version, rssi) = struct.unpack(">Ibb", payload)
                 self.findRSSI(source, nodeID)
             #if (destination == SPUR_ADDRESS) and (source not in self.addr2id) and source != 0:
             if (destination == SPUR_ADDRESS):
