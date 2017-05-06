@@ -188,7 +188,7 @@ class App(CbApp):
                 elif message["function"] == "config":
                     self.cbLog("debug", "onClientMessage, message[node]: " + str(message["id"]))
                     nodeID = int(message["id"])
-                    nodeAddr = self.id2addr[int(message["id"])]
+                    nodeAddr = self.id2addr[nodeID]
                     if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
                         self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
                         self.nodeConfig[nodeAddr] = message["config"]
@@ -223,10 +223,10 @@ class App(CbApp):
                         nodeID = int(message["id"])
                         if nodeID not in self.activeNodes:
                             self.cbLog("info", "{} now active on this bridge".format(nodeID))
-                            self.activeNodes.append(message["id"])
+                            self.activeNodes.append(NodeID)
                     else:
                         if nodeID in self.activeNodes:
-                            self.activeNodes.remove(message["id"])
+                            self.activeNodes.remove(nodeID)
                             self.cbLog("info", "{} deactivated this bridge".format(nodeID))
                 elif message["function"] == "reset":
                     nodeAddr = self.id2addr[int(message["id"])]
