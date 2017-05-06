@@ -71,6 +71,7 @@ class App(CbApp):
         self.id2addr[0]         = 0           # For including
         self.addr2id            = {}          # Node address to node if mapping
         self.addr2id[0]         = 0
+        self.activeNodes        = []
         self.radioOn            = True
         self.messageQueue       = []
         self.sentTo             = []
@@ -105,6 +106,7 @@ class App(CbApp):
         state = {
             "id2addr": self.id2addr,
             "addr2id": self.addr2id,
+            "activeNodes": self.activeNodes,
             "buttonState": self.buttonState,
             "wakeupCount": self.wakeupCount,
             "wakeups": self.wakeups
@@ -125,6 +127,7 @@ class App(CbApp):
                 self.cbLog("debug", "Loaded saved state: " + str(json.dumps(state, indent=4)))
                 self.id2addr = state["id2addr"]
                 self.addr2id = state["addr2id"]
+                self.activeNodes = state["activeNodes"]
                 self.buttonState = state["buttonState"]
                 self.wakeupCount = state["wakeupCount"]
                 self.wakeups = state["wakeups"]
@@ -158,9 +161,15 @@ class App(CbApp):
                     nodeID = int(message["id"])
                     addr = int(message["address"])
                     self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, addr: {}".format(nodeID, addr))
+                    changed = False
+                    if nodeID not in self.activeNodes:
+                        self.activeNodes.append(nodeID)
+                        changed = True
                     if nodeID not in self.id2addr:
                         self.id2addr[nodeID] = addr
                         self.addr2id[addr] = nodeID
+                        changed = True
+                    if changed:
                         self.save()
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
@@ -205,9 +214,17 @@ class App(CbApp):
                 elif message["function"] == "update_address":
                     nodeID = int(message["id"])
                     addr = int(message["address"])
-                    self.id2addr[nodeID] = addr
-                    self.addr2id[addr] = nodeID
-                    self.save()
+                    if nodeID not in self.id2addr:
+                        self.id2addr[nodeID] = addr
+                        self.addr2id[addr] = nodeID
+                        self.save()
+                elif message["function"] == "assign_node":
+                    if message["bid"] == SPUR_ADDRESS:
+                        if message["id"] not in self.activeNodes:
+                            self.activeNodes.append(message["id"])
+                    else:
+                        if message["id"] in self.activeNodes:
+                            self.activeNodes.remove(message["id"])
                 elif message["function"] == "reset":
                     nodeAddr = self.id2addr[int(message["id"])]
                     msg = self.formatRadioMessage(nodeAddr, "reset", 0)
@@ -466,7 +483,7 @@ class App(CbApp):
             except:
                 function = "undefined"
             self.cbLog("debug", "source: {}, function: {}".format(source, function))
-            if function == "woken_up" and destination != SPUR_ADDRESS:
+            if function == "woken_up" and self.addr2id[source] not in self.activeNodes:
                 if "source" in self.addr2id:
                     nodeID = self.addr2id[source]
                 else:
@@ -479,11 +496,9 @@ class App(CbApp):
                 self.cbLog("debug", "include_req for a different bridge, {}, nodeID: {}".format(destination, nodeID))
                 self.findRSSI(source, nodeID)
             """
-            if (destination == SPUR_ADDRESS):
-                #hexMessage = message.encode("hex")
-                #self.cbLog("debug", "hex message after decode: " + str(hexMessage))
+            if function == "include_req":
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
-                if function == "include_req":
+                if (destination == SPUR_ADDRESS):
                     length = struct.unpack(">b", message[9])[0]
                     if length == 14:
                         payload = message[10:14]
@@ -507,69 +522,71 @@ class App(CbApp):
                     self.removeNodeMessages(nodeID)
                     if nodeID not in list(self.including):
                         self.including.append(nodeID)
-                elif function == "alert":
-                    length = struct.unpack(">b", message[9])[0]
-                    if length == 14:
-                        payload = message[10:14]
-                        try:
-                            (alertType, rssi, temperature) = struct.unpack(">Hbb", payload)
-                        except Exception as ex:
-                            alertType = 0xFFFF
-                            self.cbLog("warning", "Unknown alert type received. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
-                    else:
-                        payload = message[10:12]
-                        try:
-                            alertType = struct.unpack(">H", payload)[0]
-                        except Exception as ex:
-                            alertType = 0xFFFF
-                            self.cbLog("warning", "Unknown alert type received. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
-                    hexPayload = payload.encode("hex")
-                    self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
-                    self.cbLog("debug", "Rx, alert, type: {}".format(alertType & 0xFF00))
-                    if (alertType & 0xFF00) == 0x0200:
-                        battery_level = ((alertType & 0xFF) * 0.235668)/10
-                        msg = {
-                            "function": "battery",
-                            "value": battery_level,
-                            "source": self.addr2id[source]
-                        }
+            elif source in self.addr2id:
+                if self.addr2id[source] in self.activeNodes:
+                    if function == "alert":
+                        length = struct.unpack(">b", message[9])[0]
                         if length == 14:
-                            msg["rssi"] = rssi
-                            msg["temperature"] = temperature
-                    else:
-                        self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}, id: {}".format(source, self.addr2id[source]))
-                        self.buttonState[source] = alertType & 0xFF
-                        self.wakeupCount[source] = 0
-                        msg = {
-                            "function": "alert",
-                            "type": alertType,
-                            "source": self.addr2id[source]
-                        }
-                    self.client.send(msg)
-                    # Uncomment appropriately to test nack
-                    #self.cbLog("debug", "onRadioMessage, ackCount: {}".format(self.ackCount))
-                    #if self.ackCount == 3 or self.ackCount == 6:
-                    #    self.cbLog("debug", "onRadioMessage, sending Nack")
-                    #    msg = self.formatRadioMessage(source, "nack", self.setWakeup(source))
-                    #    self.queueRadio(msg, source, "nack")
-                    #else:
-                    if True:
+                            payload = message[10:14]
+                            try:
+                                (alertType, rssi, temperature) = struct.unpack(">Hbb", payload)
+                            except Exception as ex:
+                                alertType = 0xFFFF
+                                self.cbLog("warning", "Unknown alert type received. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+                        else:
+                            payload = message[10:12]
+                            try:
+                                alertType = struct.unpack(">H", payload)[0]
+                            except Exception as ex:
+                                alertType = 0xFFFF
+                                self.cbLog("warning", "Unknown alert type received. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+                        hexPayload = payload.encode("hex")
+                        self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
+                        self.cbLog("debug", "Rx, alert, type: {}".format(alertType & 0xFF00))
+                        if (alertType & 0xFF00) == 0x0200:
+                            battery_level = ((alertType & 0xFF) * 0.235668)/10
+                            msg = {
+                                "function": "battery",
+                                "value": battery_level,
+                                "source": self.addr2id[source]
+                            }
+                            if length == 14:
+                                msg["rssi"] = rssi
+                                msg["temperature"] = temperature
+                        else:
+                            self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}, id: {}".format(source, self.addr2id[source]))
+                            self.buttonState[source] = alertType & 0xFF
+                            self.wakeupCount[source] = 0
+                            msg = {
+                                "function": "alert",
+                                "type": alertType,
+                                "source": self.addr2id[source]
+                            }
+                        self.client.send(msg)
+                        # Uncomment appropriately to test nack
+                        #self.cbLog("debug", "onRadioMessage, ackCount: {}".format(self.ackCount))
+                        #if self.ackCount == 3 or self.ackCount == 6:
+                        #    self.cbLog("debug", "onRadioMessage, sending Nack")
+                        #    msg = self.formatRadioMessage(source, "nack", self.setWakeup(source))
+                        #    self.queueRadio(msg, source, "nack")
+                        #else:
+                        if True:
+                            msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
+                            self.queueRadio(msg, source, "ack")
+                        #self.ackCount += 1
+                    elif function == "woken_up":
+                        self.cbLog("debug", "Rx, woken_up from id: {}".format(self.addr2id[source]))
                         msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
                         self.queueRadio(msg, source, "ack")
-                    #self.ackCount += 1
-                elif function == "woken_up":
-                    self.cbLog("debug", "Rx, woken_up from id: {}".format(self.addr2id[source]))
-                    msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
-                    self.queueRadio(msg, source, "ack")
-                    msg = {
-                        "function": "woken_up",
-                        "source": self.addr2id[source]
-                    }
-                    self.client.send(msg)
-                elif function == "ack":
-                    self.onAck(source)
-                else:
-                    self.cbLog("warning", "onRadioMessage, undefined message, source " + str(source) + ", function: " + function)
+                        msg = {
+                            "function": "woken_up",
+                            "source": self.addr2id[source]
+                        }
+                        self.client.send(msg)
+                    elif function == "ack":
+                        self.onAck(source)
+                    else:
+                        self.cbLog("warning", "onRadioMessage, undefined message, source " + str(source) + ", function: " + function)
 
     def setWakeup(self, nodeAddr):
         nodeID = self.addr2id[nodeAddr]
