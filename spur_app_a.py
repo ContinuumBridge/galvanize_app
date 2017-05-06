@@ -483,12 +483,13 @@ class App(CbApp):
             except:
                 function = "undefined"
             self.cbLog("debug", "source: {}, function: {}".format(source, function))
-            if function == "woken_up" and self.addr2id[source] not in self.activeNodes:
-                if "source" in self.addr2id:
-                    nodeID = self.addr2id[source]
+            if function == "woken_up":
+                if source in self.addr2id:
+                    if self.addr2id[source] not in self.activeNodes:
+                        nodeID = self.addr2id[source]
+                        self.findRSSI(source, nodeID)
                 else:
-                    nodeID = None
-                self.findRSSI(source, nodeID)
+                    self.findRSSI(source, None)
             """
             if (function == "include_req" and destination != SPUR_ADDRESS):
                 payload = message[10:16]
