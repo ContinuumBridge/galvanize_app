@@ -163,6 +163,7 @@ class App(CbApp):
                     self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, addr: {}".format(nodeID, addr))
                     changed = False
                     if nodeID not in self.activeNodes:
+                        self.cbLog("debug", "{} added to active_nodes: {}".format(nodeID, self.activeNodes))
                         self.activeNodes.append(nodeID)
                         changed = True
                     if nodeID not in self.id2addr:
@@ -219,8 +220,8 @@ class App(CbApp):
                         self.addr2id[addr] = nodeID
                         self.save()
                 elif message["function"] == "assign_node":
+                    nodeID = int(message["id"])
                     if message["bid"] == SPUR_ADDRESS:
-                        nodeID = int(message["id"])
                         if nodeID not in self.activeNodes:
                             self.cbLog("info", "{} now active on this bridge".format(nodeID))
                             self.activeNodes.append(NodeID)
