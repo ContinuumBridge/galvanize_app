@@ -221,7 +221,7 @@ class App(CbApp):
                         self.save()
                 elif message["function"] == "assign_node":
                     self.cbLog("debug", "assign_node, node: {}, bridge: {}".format(message["id"], message["bid"]))
-                    self.cbLog("debug", "assign_node, SPUR_ADDRESS: {}, active_nodes: {}".format(SPUR_ADDRESS, self.active_nodes))
+                    self.cbLog("debug", "assign_node, SPUR_ADDRESS: {}, activeNodes: {}".format(SPUR_ADDRESS, self.activeNodes))
                     nodeID = int(message["id"])
                     if message["bid"] == SPUR_ADDRESS:
                         if nodeID not in self.activeNodes:
