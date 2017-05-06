@@ -226,7 +226,7 @@ class App(CbApp):
                     if int(message["bid"][3:]) == SPUR_ADDRESS:
                         if nodeID not in self.activeNodes:
                             self.cbLog("info", "{} now active on this bridge".format(nodeID))
-                            self.activeNodes.append(NodeID)
+                            self.activeNodes.append(nodeID)
                     else:
                         if nodeID in self.activeNodes:
                             self.activeNodes.remove(nodeID)
