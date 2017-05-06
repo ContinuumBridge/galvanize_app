@@ -223,7 +223,7 @@ class App(CbApp):
                     self.cbLog("debug", "assign_node, node: {}, bridge: {}".format(message["id"], message["bid"]))
                     self.cbLog("debug", "assign_node, SPUR_ADDRESS: {}, activeNodes: {}".format(SPUR_ADDRESS, self.activeNodes))
                     nodeID = int(message["id"])
-                    if message["bid"] == SPUR_ADDRESS:
+                    if int(message["bid"][3:]) == SPUR_ADDRESS:
                         if nodeID not in self.activeNodes:
                             self.cbLog("info", "{} now active on this bridge".format(nodeID))
                             self.activeNodes.append(NodeID)
