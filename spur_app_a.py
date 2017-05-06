@@ -220,11 +220,14 @@ class App(CbApp):
                         self.save()
                 elif message["function"] == "assign_node":
                     if message["bid"] == SPUR_ADDRESS:
-                        if message["id"] not in self.activeNodes:
+                        nodeID = int(message["id"])
+                        if nodeID not in self.activeNodes:
+                            self.cbLog("info", "{} now active on this bridge".format(nodeID))
                             self.activeNodes.append(message["id"])
                     else:
-                        if message["id"] in self.activeNodes:
+                        if nodeID in self.activeNodes:
                             self.activeNodes.remove(message["id"])
+                            self.cbLog("info", "{} deactivated this bridge".format(nodeID))
                 elif message["function"] == "reset":
                     nodeAddr = self.id2addr[int(message["id"])]
                     msg = self.formatRadioMessage(nodeAddr, "reset", 0)
