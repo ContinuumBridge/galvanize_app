@@ -161,17 +161,12 @@ class App(CbApp):
                     nodeID = int(message["id"])
                     addr = int(message["address"])
                     self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, addr: {}".format(nodeID, addr))
-                    changed = False
+                    self.cbLog("debug", "{} added to active_nodes: {}".format(nodeID, self.activeNodes))
                     if nodeID not in self.activeNodes:
-                        self.cbLog("debug", "{} added to active_nodes: {}".format(nodeID, self.activeNodes))
                         self.activeNodes.append(nodeID)
-                        changed = True
-                    if nodeID not in self.id2addr:
-                        self.id2addr[nodeID] = addr
-                        self.addr2id[addr] = nodeID
-                        changed = True
-                    if changed:
-                        self.save()
+                    self.id2addr[nodeID] = addr
+                    self.addr2id[addr] = nodeID
+                    self.save()
                     data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                     msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
                     # If everything happens too quickly, a button may not be ready for include_grant, so add a delay
