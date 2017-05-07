@@ -153,85 +153,105 @@ class App(CbApp):
         self.client.receive(message)
 
     def onClientMessage(self, message):
-        if True:
-        #try:
+        try:
             self.cbLog("debug", "onClientMessage, message: " + str(json.dumps(message, indent=4)))
             if "function" in message:
                 if message["function"] == "include_grant":
-                    nodeID = int(message["id"])
-                    addr = int(message["address"])
-                    self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, addr: {}".format(nodeID, addr))
-                    self.cbLog("debug", "{} added to active_nodes: {}".format(nodeID, self.activeNodes))
-                    if nodeID not in self.activeNodes:
-                        self.activeNodes.append(nodeID)
-                    self.id2addr[nodeID] = addr
-                    self.addr2id[addr] = nodeID
-                    self.save()
-                    data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
-                    msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
-                    # If everything happens too quickly, a button may not be ready for include_grant, so add a delay
-                    reactor.callLater(0.5, self.queueRadio, msg, self.id2addr[nodeID], "include_grant")
-                    self.cbLog("debug", "onClientMessage, adding {} to includeGrants".format(self.id2addr[nodeID]))
-                    self.includeGrants.append(self.id2addr[nodeID])
-                    if self.id2addr[nodeID] in self.requestBatteries:
-                        self.requestBatteries.remove(self.id2addr[nodeID])
-                elif message["function"] == "include_not":
-                    nodeID = int(message["id"])
-                    data = struct.pack(">I", nodeID)
-                    msg = self.formatRadioMessage(GRANT_ADDRESS, "include_not", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
-                    self.queueRadio(msg, 0x00, "include_not")
-                    reactor.callLater(2, self.queueRadio, msg, 0x00, "include_not")
-                elif message["function"] == "config":
-                    self.cbLog("debug", "onClientMessage, message[node]: " + str(message["id"]))
-                    nodeID = int(message["id"])
-                    nodeAddr = self.id2addr[nodeID]
-                    if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
-                        self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
-                        self.nodeConfig[nodeAddr] = message["config"]
-                    elif nodeAddr in self.nodeConfig:  # We already have some partial config
-                        self.cbLog("debug", "onClientMessage, new partial config for existing: {}".format(nodeAddr))
-                        for c in message["config"]:
-                            self.cbLog("debug", "onClientMessage, c in message[config]: {}".format(c))
-                            self.nodeConfig[nodeAddr][c] = message["config"][c]
-                    else:  # Partial config for a node we don't have any existing config for
-                        self.cbLog("debug", "onClientMessage, new partial config for new: {}".format(nodeAddr))
-                        self.nodeConfig[nodeAddr] = message["config"]
-                    if nodeID not in self.configuring:
-                        self.configuring.append(nodeID)  # Causes a start to be sent to node on complete config update
-                    self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
-                elif message["function"] == "send_battery":
-                    self.cbLog("debug", "onClientMessage, send_battery for {}".format(message["id"]))
-                    nodeAddr = self.id2addr[int(message["id"])]
-                    if nodeAddr not in self.requestBatteries:
-                        self.requestBatteries.append(nodeAddr)
-                        self.cbLog("debug", "onClientMessage, added {} to requestBatteries".format(nodeAddr))
-                    else:
-                        self.cbLog("debug", "onClientMessage, requestBatteries for {}, but already one in queue".format(nodeAddr))
-                elif message["function"] == "update_address":
-                    nodeID = int(message["id"])
-                    addr = int(message["address"])
-                    if nodeID not in self.id2addr:
+                    try:
+                        nodeID = int(message["id"])
+                        addr = int(message["address"])
+                        self.cbLog("debug", "onClientMessage, include_grant. nodeID: {}, addr: {}".format(nodeID, addr))
+                        self.cbLog("debug", "{} added to active_nodes: {}".format(nodeID, self.activeNodes))
+                        if nodeID not in self.activeNodes:
+                            self.activeNodes.append(nodeID)
                         self.id2addr[nodeID] = addr
                         self.addr2id[addr] = nodeID
                         self.save()
+                        data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
+                        msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
+                        # If everything happens too quickly, a button may not be ready for include_grant, so add a delay
+                        reactor.callLater(0.5, self.queueRadio, msg, self.id2addr[nodeID], "include_grant")
+                        self.cbLog("debug", "onClientMessage, adding {} to includeGrants".format(self.id2addr[nodeID]))
+                        self.includeGrants.append(self.id2addr[nodeID])
+                        if self.id2addr[nodeID] in self.requestBatteries:
+                            self.requestBatteries.remove(self.id2addr[nodeID])
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing include_grant. Type: {}. Exception: {}".format(type(ex), ex.args))
+                elif message["function"] == "include_not":
+                    try:
+                        nodeID = int(message["id"])
+                        data = struct.pack(">I", nodeID)
+                        msg = self.formatRadioMessage(GRANT_ADDRESS, "include_not", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
+                        self.queueRadio(msg, 0x00, "include_not")
+                        reactor.callLater(2, self.queueRadio, msg, 0x00, "include_not")
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing include_not. Type: {}. Exception: {}".format(type(ex), ex.args))
+                elif message["function"] == "config":
+                    try:
+                        self.cbLog("debug", "onClientMessage, message[node]: " + str(message["id"]))
+                        nodeID = int(message["id"])
+                        nodeAddr = self.id2addr[nodeID]
+                        if "name" in message["config"]:  # Update everything, so remove any config that's already waiting
+                            self.cbLog("debug", "onClientMessage, complete new config for: {}".format(nodeAddr))
+                            self.nodeConfig[nodeAddr] = message["config"]
+                        elif nodeAddr in self.nodeConfig:  # We already have some partial config
+                            self.cbLog("debug", "onClientMessage, new partial config for existing: {}".format(nodeAddr))
+                            for c in message["config"]:
+                                self.cbLog("debug", "onClientMessage, c in message[config]: {}".format(c))
+                                self.nodeConfig[nodeAddr][c] = message["config"][c]
+                        else:  # Partial config for a node we don't have any existing config for
+                            self.cbLog("debug", "onClientMessage, new partial config for new: {}".format(nodeAddr))
+                            self.nodeConfig[nodeAddr] = message["config"]
+                        if nodeID not in self.configuring:
+                            self.configuring.append(nodeID)  # Causes a start to be sent to node on complete config update
+                        self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing config. Type: {}. Exception: {}".format(type(ex), ex.args))
+                elif message["function"] == "send_battery":
+                    try:
+                        self.cbLog("debug", "onClientMessage, send_battery for {}".format(message["id"]))
+                        nodeAddr = self.id2addr[int(message["id"])]
+                        if nodeAddr not in self.requestBatteries:
+                            self.requestBatteries.append(nodeAddr)
+                            self.cbLog("debug", "onClientMessage, added {} to requestBatteries".format(nodeAddr))
+                        else:
+                            self.cbLog("debug", "onClientMessage, requestBatteries for {}, but already one in queue".format(nodeAddr))
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing send_battery. Type: {}. Exception: {}".format(type(ex), ex.args))
+                elif message["function"] == "update_address":
+                    try:
+                        nodeID = int(message["id"])
+                        addr = int(message["address"])
+                        if nodeID not in self.id2addr:
+                            self.id2addr[nodeID] = addr
+                            self.addr2id[addr] = nodeID
+                            self.save()
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing update_address. Type: {}. Exception: {}".format(type(ex), ex.args))
                 elif message["function"] == "assign_node":
-                    self.cbLog("debug", "assign_node, node: {}, bridge: {}".format(message["id"], message["bid"]))
-                    self.cbLog("debug", "assign_node, SPUR_ADDRESS: {}, activeNodes: {}".format(SPUR_ADDRESS, self.activeNodes))
-                    nodeID = int(message["id"])
-                    if int(message["bid"][3:]) == SPUR_ADDRESS:
-                        if nodeID not in self.activeNodes:
-                            self.cbLog("info", "{} now active on this bridge".format(nodeID))
-                            self.activeNodes.append(nodeID)
-                    else:
-                        if nodeID in self.activeNodes:
-                            self.activeNodes.remove(nodeID)
-                            self.cbLog("info", "{} deactivated this bridge".format(nodeID))
+                    try:
+                        self.cbLog("debug", "assign_node, node: {}, bridge: {}".format(message["id"], message["bid"]))
+                        self.cbLog("debug", "assign_node, SPUR_ADDRESS: {}, activeNodes: {}".format(SPUR_ADDRESS, self.activeNodes))
+                        nodeID = int(message["id"])
+                        if int(message["bid"][3:]) == SPUR_ADDRESS:
+                            if nodeID not in self.activeNodes:
+                                self.cbLog("info", "{} now active on this bridge".format(nodeID))
+                                self.activeNodes.append(nodeID)
+                        else:
+                            if nodeID in self.activeNodes:
+                                self.activeNodes.remove(nodeID)
+                                self.cbLog("info", "{} deactivated this bridge".format(nodeID))
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing assign_node. Type: {}. Exception: {}".format(type(ex), ex.args))
                 elif message["function"] == "reset":
-                    nodeAddr = self.id2addr[int(message["id"])]
-                    msg = self.formatRadioMessage(nodeAddr, "reset", 0)
-                    self.queueRadio(msg, nodeAddr, "reset")
-        #except Exception as ex:
-        #    self.cbLog("warning", "onClientMessage exception. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
+                    try:
+                        nodeAddr = self.id2addr[int(message["id"])]
+                        msg = self.formatRadioMessage(nodeAddr, "reset", 0)
+                        self.queueRadio(msg, nodeAddr, "reset")
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing reset. Type: {}. Exception: {}".format(type(ex), ex.args))
+        except Exception as ex:
+            self.cbLog("warning", "onClientMessage exception. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
 
     def sendConfig(self, nodeAddr):
         #self.cbLog("debug", "sendConfig, nodeAddr: " + str(nodeAddr) + ", nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
