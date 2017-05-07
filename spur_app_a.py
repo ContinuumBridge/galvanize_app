@@ -681,7 +681,8 @@ class App(CbApp):
     def monitor(self):
         now = time.time()
         #self.cbLog("debug", "monitor, nextWakeupTimes: {}". format(self.nextWakeupTime))
-        for n in self.addr2id:
+        for m in self.activeNodes:
+            n = id2addr[n]
             if n in list(self.nextWakeupTime):
                 if (now > self.nextWakeupTime[n]):
                     self.cbLog("debug", "monitor, excluding {}, now: {}, nextWakeupTime: {}".format(n, now, self.nextWakeupTime[n]))
