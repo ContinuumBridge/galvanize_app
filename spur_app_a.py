@@ -51,8 +51,8 @@ Y_STARTS = (
 SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 1800
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
-#CID                 = "CID157"         # Client ID Staging
-CID                 = "CID249"          # Client ID Production
+CID                 = "CID157"         # Client ID Staging
+#CID                 = "CID249"          # Client ID Production
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
@@ -88,7 +88,8 @@ class App(CbApp):
         self.nextWakeupTime     = {}
         self.beaconInterval     = 6
         self.beaconRunning      = False
-        self.findingRssiAddr        = None
+        self.findingRssiAddr    = None
+        self.doingWakeup        = False
         #self.testCount         = 0           # Test use only
         #self.ackCount          = 0           # Used purely for test of nack
 
@@ -465,7 +466,7 @@ class App(CbApp):
         msg = self.formatRadioMessage(nodeAddr, "send_battery", self.setWakeup(nodeAddr))
         self.queueRadio(msg, nodeAddr, "send_battery")
 
-    def findRSSI(self, source, nodeID=None):
+    def findRSSI(self, source):
         self.findingRssiAddr = source
         msg= {
             "id": self.id,
@@ -476,16 +477,29 @@ class App(CbApp):
 
     def onRSSI(self, rssi):
         self.cbLog("debug", "RSSI for {}: {}, type: {}".format(self.findingRssiAddr, rssi, type(self.findingRssiAddr)))
-        msg = {
-            "function": "rssi",
-            "address": self.findingRssiAddr,
-            "rssi": rssi
-        }
-        if self.findingRssiAddr in self.addr2id:
-            msg["id"] = self.addr2id[self.findingRssiAddr]
-        self.findingRssiAddr = None
-        self.cbLog("debug", "sending message to client: {}".format(msg))
-        self.client.send(msg)
+        if self.doingWakeup:
+            self.doingWakeup = False
+            nodeID = self.addr2id[self.findingRssiAddr]
+            msg = self.formatRadioMessage(self.findingRssiAddr, "ack", self.setWakeup(self.findingRssiAddr))
+            self.findingRssiAddr = None
+            self.queueRadio(msg, nodeID, "ack")
+            msg = {
+                "function": "woken_up",
+                "source": nodeID,
+                "rssi": rssi
+            }
+            self.client.send(msg)
+        else:
+            msg = {
+                "function": "rssi",
+                "address": self.findingRssiAddr,
+                "rssi": rssi
+            }
+            if self.findingRssiAddr in self.addr2id:
+                msg["id"] = self.addr2id[self.findingRssiAddr]
+            self.findingRssiAddr = None
+            self.cbLog("debug", "sending message to client: {}".format(msg))
+            self.client.send(msg)
 
     def onRadioMessage(self, message):
         if self.radioOn:
@@ -507,10 +521,9 @@ class App(CbApp):
             if function == "woken_up":
                 if source in self.addr2id:
                     if self.addr2id[source] not in self.activeNodes:
-                        nodeID = self.addr2id[source]
-                        self.findRSSI(source, nodeID)
+                        self.findRSSI(source)
                 else:
-                    self.findRSSI(source, None)
+                    self.findRSSI(source)
             """
             if (function == "include_req" and destination != SPUR_ADDRESS):
                 payload = message[10:16]
@@ -598,13 +611,8 @@ class App(CbApp):
                         #self.ackCount += 1
                     elif function == "woken_up":
                         self.cbLog("debug", "Rx, woken_up from id: {}".format(self.addr2id[source]))
-                        msg = self.formatRadioMessage(source, "ack", self.setWakeup(source))
-                        self.queueRadio(msg, source, "ack")
-                        msg = {
-                            "function": "woken_up",
-                            "source": self.addr2id[source]
-                        }
-                        self.client.send(msg)
+                        self.doingWakeup = True
+                        self.findRSSI(source)
                     elif function == "ack":
                         self.onAck(source)
                     else:
