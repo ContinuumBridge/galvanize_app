@@ -240,6 +240,7 @@ class App(CbApp):
                             if nodeID not in self.activeNodes:
                                 self.cbLog("info", "{} now active on this bridge".format(nodeID))
                                 self.activeNodes.append(nodeID)
+                                self.nextWakeupTime[self.id2addr[nodeID]] = int(time.time() + 720)  # To pevent spurious exlude_reqs
                         else:
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
