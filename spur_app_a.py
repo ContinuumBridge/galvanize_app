@@ -224,11 +224,10 @@ class App(CbApp):
                         self.cbLog("debug", "update_address, id2addr before: {}".format(self.id2addr))
                         nodeID = int(message["id"])
                         addr = int(message["address"])
-                        if nodeID not in self.id2addr:
-                            self.id2addr[nodeID] = addr
-                            self.addr2id[addr] = nodeID
-                            self.cbLog("debug", "update_address, id2addr after: {}".format(self.id2addr))
-                            self.save()
+                        self.id2addr[nodeID] = addr
+                        self.addr2id[addr] = nodeID
+                        self.cbLog("debug", "update_address, id2addr after: {}".format(self.id2addr))
+                        self.save()
                     except Exception as ex:
                         self.cbLog("warning", "onClientMessage, problem processing update_address. Type: {}. Exception: {}".format(type(ex), ex.args))
                 elif message["function"] == "assign_node":
