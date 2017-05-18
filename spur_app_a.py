@@ -167,6 +167,7 @@ class App(CbApp):
                             self.activeNodes.append(nodeID)
                         self.id2addr[nodeID] = addr
                         self.addr2id[addr] = nodeID
+                        self.nextWakeupTime[addr] = int(time.time() + 720)  # To pevent spurious exlude_reqs
                         self.save()
                         data = struct.pack(">IH", nodeID, self.id2addr[nodeID])
                         msg = self.formatRadioMessage(GRANT_ADDRESS, "include_grant", 0, data)  # Wakeup = 0 after include_grant (stay awake 10s)
