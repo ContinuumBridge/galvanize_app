@@ -709,7 +709,8 @@ class App(CbApp):
             n = self.id2addr[m]
             if n in list(self.nextWakeupTime):
                 if (now > self.nextWakeupTime[n]):
-                    self.cbLog("debug", "monitor, excluding {}, now: {}, nextWakeupTime: {}".format(n, now, self.nextWakeupTime[n]))
+                    self.cbLog("debug", "monitor, excluding {}, {}, time diff: {}".format(m, n, now-self.nextWakeupTime[n]))
+                    self.cbLog("debug", "monitor, activeNodes: {}".format(self.activeNodes))
                     msg = {
                         "function": "exclude_req",
                         "source": self.addr2id[n]
