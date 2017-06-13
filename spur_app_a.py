@@ -502,7 +502,7 @@ class App(CbApp):
                 msg["id"] = self.addr2id[self.findingRssiAddr]
             self.findingRssiAddr = None
             self.cbLog("debug", "sending message to client: {}".format(msg))
-            self.client.send(msg)
+            reactor.callLater(3, self.client.send, msg)  # We want rssi messages to arrive at spur_clients after wakeups
 
     def onRadioMessage(self, message):
         if self.radioOn:
