@@ -51,8 +51,8 @@ Y_STARTS = (
 SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 1800
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
-#CID                 = "CID157"         # Client ID Staging
-CID                 = "CID249"          # Client ID Production
+CID                 = "CID157"         # Client ID Staging
+#CID                 = "CID249"          # Client ID Production
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
@@ -86,6 +86,7 @@ class App(CbApp):
         self.buttonState        = {}
         self.requestBatteries   = []
         self.nextWakeupTime     = {}
+        self.lastAlertType      = {}
         self.beaconInterval     = 6
         self.beaconRunning      = False
         self.findingRssiAddr    = None
@@ -581,26 +582,38 @@ class App(CbApp):
                         hexPayload = payload.encode("hex")
                         self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
                         self.cbLog("debug", "Rx, alert, type: {}".format(alertType & 0xFF00))
-                        if (alertType & 0xFF00) == 0x0200:
-                            battery_level = ((alertType & 0xFF) * 0.235668)/10
-                            msg = {
-                                "function": "battery",
-                                "value": battery_level,
-                                "source": self.addr2id[source]
-                            }
-                            if length == 14:
-                                msg["rssi"] = rssi
-                                msg["temperature"] = temperature
+                        if source in self.lastAlertType:
+                            if alertType == self.lastAlertType[source]:
+                                self.cbLog("debug", "Tx, alertType {}, lastAlertType {}, not sending to client".format(alertType, self.lastAlertType[source]))
+                                sendAlert = False
+                            else:
+                                sendAlert = True
                         else:
-                            self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}, id: {}".format(source, self.addr2id[source]))
-                            self.buttonState[source] = alertType & 0xFF
-                            self.wakeupCount[source] = 0
-                            msg = {
-                                "function": "alert",
-                                "type": alertType,
-                                "source": self.addr2id[source]
-                            }
-                        self.client.send(msg)
+                            self.lastAlertType[source] = alertType
+                            sendAlert = True
+                            self.cbLog("debug", "Rx, added {} to lastAlertType - alertType {}".format(source, alertType))
+                        if sendAlert:
+                            self.lastAlertType[source] = alertType
+                            if (alertType & 0xFF00) == 0x0200:
+                                battery_level = ((alertType & 0xFF) * 0.235668)/10
+                                msg = {
+                                    "function": "battery",
+                                    "value": battery_level,
+                                    "source": self.addr2id[source]
+                                }
+                                if length == 14:
+                                    msg["rssi"] = rssi
+                                    msg["temperature"] = temperature
+                            else:
+                                self.cbLog("debug", "onRadioMessage, resetting wakeupCount for {}, id: {}".format(source, self.addr2id[source]))
+                                self.buttonState[source] = alertType & 0xFF
+                                self.wakeupCount[source] = 0
+                                msg = {
+                                    "function": "alert",
+                                    "type": alertType,
+                                    "source": self.addr2id[source]
+                                }
+                            self.client.send(msg)
                         # Uncomment appropriately to test nack
                         #self.cbLog("debug", "onRadioMessage, ackCount: {}".format(self.ackCount))
                         #if self.ackCount == 3 or self.ackCount == 6:
