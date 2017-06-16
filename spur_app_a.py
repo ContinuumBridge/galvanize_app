@@ -10,6 +10,9 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
+#CID = "CID249"  # Client ID Production
+CID = "CID157"  # Client ID Staging
+
 import sys
 #reload(sys)
 #sys.setdefaultencoding('utf-8')
@@ -23,15 +26,6 @@ from cbcommslib import CbApp, CbClient
 from cbconfig import *
 from twisted.internet import reactor
 from subprocess import check_output
-
-try:
-    s = check_output(["git", "status"])
-    if "master" in s:
-        CID = "CID249"  # Client ID Production
-    else:
-        CID = "CID157"  # Client ID Staging
-except Exception as e:
-    CID = "CID249"  # Client ID Production
 
 FUNCTIONS = {
     "include_req": 0x00,
