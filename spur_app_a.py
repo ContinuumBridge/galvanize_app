@@ -251,7 +251,7 @@ class App(CbApp):
                             if nodeID not in self.activeNodes:
                                 self.cbLog("info", "{} now active on this bridge".format(nodeID))
                                 self.activeNodes.append(nodeID)
-                                self.nextWakeupTime[self.id2addr[nodeID]] = int(time.time() + 720)  # To pevent spurious exlude_reqs
+                                self.nextWakeupTime[self.id2addr[nodeID]] = 86396  # Just in case config not received - just short of one day
                         else:
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
@@ -283,6 +283,10 @@ class App(CbApp):
             pass
         else:
             self.includeGrants.remove(nodeAddr)
+        reassign = True if "reassign" in self.nodeConfig[nodeAddr] else False
+        self.cbLog("debug", "sendConfig, reassign: {}".format(reassign))
+        if reassign:
+            self.nextWakeupTime[nodeAddr] = self.nodeConfig[nodeAddr]["reassign"] * GRACE_TIME_MULT # The max wakeup/delay for the button
         for m in self.nodeConfig[nodeAddr]:
             messageCount += 1
             self.cbLog("debug", "in m loop, m: " + m)
@@ -430,7 +434,8 @@ class App(CbApp):
                 self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
                 wakeup = 0
                 msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
-                self.queueRadio(msg, int(nodeAddr), "config")
+                if not reassign:
+                    self.queueRadio(msg, int(nodeAddr), "config")
             else:
                 appValue = False
         if appValueMessage:
@@ -439,7 +444,8 @@ class App(CbApp):
                 self.cbLog("debug", "Sending app_value to node: " + str(appValueMessage.encode("hex")))
                 self.wakeupCount[nodeAddr] = 0
                 msg = self.formatRadioMessage(nodeAddr, "config", 30, appValueMessage)  # Wakeup after 30s when changing current screen
-                self.queueRadio(msg, int(nodeAddr), "config")
+                if not reassign:
+                    self.queueRadio(msg, int(nodeAddr), "config")
             except Exception as ex:
                 self.cbLog("warning", "sendConfig, expection sending app_value. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
         nodeID =  self.addr2id[nodeAddr]
@@ -448,7 +454,8 @@ class App(CbApp):
                 self.cbLog("debug", "Removing nodeID " + str(nodeID) + " from " + str(self.configuring))
                 if not appValueMessage:
                     msg = self.formatRadioMessage(nodeAddr, "start", PRESSED_WAKEUP, formatMessage)
-                    self.queueRadio(msg, nodeAddr, "start")
+                    if not reassign:
+                        self.queueRadio(msg, nodeAddr, "start")
                 self.configuring.remove(nodeID)
         except Exception as ex:
             self.cbLog("warning", "sendConfig, expection in removing from self.configuring. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
