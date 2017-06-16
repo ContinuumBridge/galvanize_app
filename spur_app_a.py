@@ -210,13 +210,16 @@ class App(CbApp):
                         if nodeID not in self.configuring:
                             self.configuring.append(nodeID)  # Causes a start to be sent to node on complete config update
                             # Because buttons don't send an alert on entering state zero after an auto-reset
-                            msg = {
-                                "function": "alert",
-                                "type": 0,
-                                "source": nodeID
-                            }
-                            self.client.send(msg)
-                            self.cbLog("debug", "Sending alert 0 on config")
+                            if "reassign" in message["config"]:
+                                self.cbLog("debug", "Config message, not sending alert 0 because it's a reassign")
+                            else:
+                                msg = {
+                                    "function": "alert",
+                                    "type": 0,
+                                    "source": nodeID
+                                }
+                                self.client.send(msg)
+                                self.cbLog("debug", "Config message, sending alert 0")
                         self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
                     except Exception as ex:
                         self.cbLog("warning", "onClientMessage, problem processing config. Type: {}. Exception: {}".format(type(ex), ex.args))
