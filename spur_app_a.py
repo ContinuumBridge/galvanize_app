@@ -286,7 +286,7 @@ class App(CbApp):
         reassign = True if "reassign" in self.nodeConfig[nodeAddr] else False
         self.cbLog("debug", "sendConfig, reassign: {}".format(reassign))
         if reassign:
-            self.nextWakeupTime[nodeAddr] = self.nodeConfig[nodeAddr]["reassign"] * GRACE_TIME_MULT # The max wakeup/delay for the button
+            self.nextWakeupTime[nodeAddr] = time.time() + self.nodeConfig[nodeAddr]["reassign"] * GRACE_TIME_MULT # The max wakeup/delay for the button
         for m in self.nodeConfig[nodeAddr]:
             messageCount += 1
             self.cbLog("debug", "in m loop, m: " + m)
@@ -741,7 +741,8 @@ class App(CbApp):
             n = self.id2addr[m]
             if n in list(self.nextWakeupTime):
                 if (now > self.nextWakeupTime[n]):
-                    self.cbLog("debug", "monitor, excluding {}, {}, time diff: {}".format(m, n, now-self.nextWakeupTime[n]))
+                    self.cbLog("debug", "monitor, excluding {}, {}, nexWakeupTime: {}, time diff: {}".format(m, n, self.nextWakeupTime[n], \
+                        now-self.nextWakeupTime[n]))
                     self.cbLog("debug", "monitor, activeNodes: {}".format(self.activeNodes))
                     msg = {
                         "function": "exclude_req",
