@@ -22,6 +22,16 @@ import random
 from cbcommslib import CbApp, CbClient
 from cbconfig import *
 from twisted.internet import reactor
+from subprocess import check_output
+
+try:
+    s = check_output(["git", "status"])
+    if "master" in s:
+        CID = "CID249"  # Client ID Production
+    else:
+        CID = "CID157"  # Client ID Staging
+except Exception as e:
+    CID = "CID249"  # Client ID Production
 
 FUNCTIONS = {
     "include_req": 0x00,
@@ -51,8 +61,6 @@ Y_STARTS = (
 SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_INTERVAL      = 1800
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
-#CID                 = "CID157"         # Client ID Staging
-CID                 = "CID249"          # Client ID Production
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
@@ -911,6 +919,7 @@ class App(CbApp):
         self.saveFile = CB_CONFIG_DIR + self.id + ".savestate"
         self.loadSaved()
         reactor.callLater(CHECK_INTERVAL, self.checkConnected)
+        self.cbLog("info", "CID: {}".format(CID))
         self.setState("starting")
 
 if __name__ == '__main__':
