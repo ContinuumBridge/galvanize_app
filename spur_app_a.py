@@ -251,7 +251,7 @@ class App(CbApp):
                             if nodeID not in self.activeNodes:
                                 self.cbLog("info", "{} now active on this bridge".format(nodeID))
                                 self.activeNodes.append(nodeID)
-                                self.nextWakeupTime[self.id2addr[nodeID]] = 86396  # Just in case config not received - just short of one day
+                                self.nextWakeupTime[self.id2addr[nodeID]] = time.time() + 86396  # Just in case config not received - just short of one day
                         else:
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
