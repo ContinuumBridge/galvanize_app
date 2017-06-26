@@ -258,6 +258,7 @@ class App(CbApp):
                         else:
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
+                                self.removeNodeMessages(nodeID)
                                 self.cbLog("info", "{} deactivated this bridge".format(nodeID))
                         self.save()
                     except Exception as ex:
