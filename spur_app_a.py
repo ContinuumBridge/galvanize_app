@@ -259,6 +259,7 @@ class App(CbApp):
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
                                 self.cbLog("info", "{} deactivated this bridge".format(nodeID))
+                        self.save()
                     except Exception as ex:
                         self.cbLog("warning", "onClientMessage, problem processing assign_node. Type: {}. Exception: {}".format(type(ex), ex.args))
                 elif message["function"] == "reset":
