@@ -259,7 +259,8 @@ class App(CbApp):
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
                                 self.removeNodeMessages(nodeID)
-                                self.cbLog("info", "{} deactivated this bridge".format(nodeID))
+                                self.doingWakeup = False # In case we were doing this at the time (could be quite likely)
+                                self.cbLog("info", "{} deactivated this bridge and doingWakeup set to false".format(nodeID))
                         self.save()
                     except Exception as ex:
                         self.cbLog("warning", "onClientMessage, problem processing assign_node. Type: {}. Exception: {}".format(type(ex), ex.args))
