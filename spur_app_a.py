@@ -742,7 +742,7 @@ class App(CbApp):
 
     def monitor(self):
         now = time.time()
-        #self.cbLog("debug", "monitor, nextWakeupTimes: {}". format(self.nextWakeupTime))
+        self.cbLog("debug", "monitor, nextWakeupTimes: {}, activeNodes: {}".format(self.nextWakeupTime, self.activeNodes))
         for m in self.activeNodes:
             n = self.id2addr[m]
             if n in list(self.nextWakeupTime):
