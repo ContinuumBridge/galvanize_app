@@ -560,19 +560,19 @@ class App(CbApp):
             """
             if function == "include_req":
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
+                length = struct.unpack(">b", message[9])[0]
+                if length == 14:
+                    payload = message[10:14]
+                    nodeID = struct.unpack(">I", payload)[0]
+                    version = 0
+                    rssi = 0
+                else:
+                    payload = message[10:16]
+                    (nodeID, version, rssi) = struct.unpack(">Ibb", payload)
+                hexPayload = payload.encode("hex")
+                self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
+                self.cbLog("debug", "Rx, include_req, nodeID: " + str(nodeID))
                 if (destination == SPUR_ADDRESS):
-                    length = struct.unpack(">b", message[9])[0]
-                    if length == 14:
-                        payload = message[10:14]
-                        nodeID = struct.unpack(">I", payload)[0]
-                        version = 0
-                        rssi = 0
-                    else:
-                        payload = message[10:16]
-                        (nodeID, version, rssi) = struct.unpack(">Ibb", payload)
-                    hexPayload = payload.encode("hex")
-                    self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
-                    self.cbLog("debug", "Rx, include_req, nodeID: " + str(nodeID))
                     msg = {
                         "function": "include_req",
                         "include_req": nodeID,
@@ -584,6 +584,8 @@ class App(CbApp):
                     self.removeNodeMessages(nodeID)
                     if nodeID not in list(self.including):
                         self.including.append(nodeID)
+                else:
+                    self.removeNodeMessages(nodeID)
             elif source in self.addr2id:
                 if self.addr2id[source] in self.activeNodes:
                     if function == "alert":
@@ -765,24 +767,24 @@ class App(CbApp):
             self.cbLog("debug", "removeNodeMessages, messageQueue: {}".format(self.messageQueue))
             if nodeID in self.id2addr:
                 addr = self.id2addr[nodeID]
+                del self.id2addr[nodeID]
                 for m in list(self.messageQueue):
                     if m["destination"] == addr:
                         self.messageQueue.remove(m)
                         self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
                 if addr in self.nodeConfig:
                     del self.nodeConfig[addr]
-                #if addr in self.buttonState:
-                #    del self.buttonState[addr]
-                if self.id2addr[nodeID] in self.sentTo:
+                if addr in self.buttonState:
+                    del self.buttonState[addr]
+                if addr in self.sentTo:
                     self.sentTo.remove(addr)
                     self.cbLog("debug", "removeNodeMessages,removed from sentTo: {}".format(nodeID))
-                    #del self.id2addr[nodeID]
-                #if addr in self.addr2id:
-                #    del self.addr2id[addr]
-                #if addr in self.wakeupCount:
-                #    del self.wakeupCount[addr]
-                #if addr in self.wakeups:
-                #    del self.wakeups[addr]
+                if addr in self.addr2id:
+                    del self.addr2id[addr]
+                if addr in self.wakeupCount:
+                    del self.wakeupCount[addr]
+            if nodeID in self.activeNodes:
+                del self.activeNodes[nodeID]
         except Exception as ex:
             self.cbLog("warning", "removeNodeMessages, cannot remove messages for {}. Type: {}, exception: {}".format(nodeID, type(ex), ex.args))
 
