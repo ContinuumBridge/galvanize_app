@@ -78,11 +78,11 @@ class App(CbApp):
         self.messageQueue       = []
         self.sentTo             = []
         self.includeGrants      = []
+        self.includeReqMessage  = {}
         self.nodeConfig         = {} 
         self.wakeups            = {}
         self.wakeupCount        = {}
         self.beaconCalled       = 0
-        self.including          = []
         self.configuring        = []
         self.sendingConfig      = []
         self.buttonState        = {}
@@ -503,8 +503,13 @@ class App(CbApp):
         self.sendMessage(msg, self.adaptor)
 
     def onRSSI(self, rssi):
-        self.cbLog("debug", "RSSI for {}: {}, type: {}".format(self.findingRssiAddr, rssi, type(self.findingRssiAddr)))
-        if self.doingWakeup:
+        self.cbLog("debug", "RSSI for {}: {}".format(self.findingRssiAddr, rssi))
+        if self.includeReqMessage:
+            self.findingRssiAddr = None
+            self.includeReqMessage["rssi"] = rssi
+            self.client.send(self.includeReqMessage)
+            self.includeReqMessage = {}
+        elif self.doingWakeup:
             self.doingWakeup = False
             nodeID = self.addr2id[self.findingRssiAddr]
             msg = self.formatRadioMessage(self.findingRssiAddr, "ack", self.setWakeup(self.findingRssiAddr))
@@ -572,20 +577,15 @@ class App(CbApp):
                 hexPayload = payload.encode("hex")
                 self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
                 self.cbLog("debug", "Rx, include_req, nodeID: " + str(nodeID))
-                if (destination == SPUR_ADDRESS):
-                    msg = {
-                        "function": "include_req",
-                        "include_req": nodeID,
-                        "version": version,
-                        "rssi": rssi
-                    }
-                    self.client.send(msg)
-                    self.cbLog("debug", "removing all references to nodeID {}".format(nodeID))
-                    self.removeNodeMessages(nodeID)
-                    if nodeID not in list(self.including):
-                        self.including.append(nodeID)
-                else:
-                    self.removeNodeMessages(nodeID)
+                self.cbLog("debug", "removing all references to nodeID {}".format(nodeID))
+                self.removeNodeMessages(nodeID)
+                self.includeReqMessage = {
+                    "function": "include_req",
+                    "include_req": nodeID,
+                    "version": version,
+                    "rssi": None
+                }
+                self.findRSSI(nodeID)
             elif source in self.addr2id:
                 if self.addr2id[source] in self.activeNodes:
                     if function == "alert":
@@ -762,8 +762,9 @@ class App(CbApp):
 
     def removeNodeMessages(self, nodeID):
         #Remove all queued messages and reference to a node if we get a new include_req
-        try:
-            self.cbLog("debug", "removeNodeMessages, nodeID: {}, address: {}".format(nodeID, self.id2addr[nodeID]))
+        if True:
+        #try:
+            self.cbLog("debug", "removeNodeMessages, nodeID: {}".format(nodeID))
             self.cbLog("debug", "removeNodeMessages, messageQueue: {}".format(self.messageQueue))
             if nodeID in self.id2addr:
                 addr = self.id2addr[nodeID]
@@ -784,9 +785,9 @@ class App(CbApp):
                 if addr in self.wakeupCount:
                     del self.wakeupCount[addr]
             if nodeID in self.activeNodes:
-                del self.activeNodes[nodeID]
-        except Exception as ex:
-            self.cbLog("warning", "removeNodeMessages, cannot remove messages for {}. Type: {}, exception: {}".format(nodeID, type(ex), ex.args))
+                self.activeNodes.remove(nodeID)
+        #except Exception as ex:
+        #    self.cbLog("warning", "removeNodeMessages, cannot remove messages for {}. Type: {}, exception: {}".format(nodeID, type(ex), ex.args))
 
     def sendQueued(self, beacon):
         """
