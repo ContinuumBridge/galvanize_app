@@ -292,7 +292,11 @@ class App(CbApp):
         reassign = True if "reassign" in self.nodeConfig[nodeAddr] else False
         self.cbLog("debug", "sendConfig, reassign: {}".format(reassign))
         if reassign:
-            self.nextWakeupTime[nodeAddr] = time.time() + self.nodeConfig[nodeAddr]["reassign"] * GRACE_TIME_MULT # The max wakeup/delay for the button
+            if PRESSED_WAKEUP > self.nodeConfig[nodeAddr]["reassign"]:
+                wakeup = time.time() + PRESSED_WAKEUP * GRACE_TIME_MULT
+            else:
+                wakeup = time.time() + self.nodeConfig[nodeAddr]["reassign"] * GRACE_TIME_MULT # The max wakeup/delay for the button
+            self.nextWakeupTime[nodeAddr] = wakeup
         for m in self.nodeConfig[nodeAddr]:
             messageCount += 1
             self.cbLog("debug", "in m loop, m: " + m)
