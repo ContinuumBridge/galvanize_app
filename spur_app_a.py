@@ -790,6 +790,8 @@ class App(CbApp):
                     del self.wakeupCount[addr]
             if nodeID in self.activeNodes:
                 self.activeNodes.remove(nodeID)
+            if nodeID in self.configuring:
+                self.configuring.remove(nodeID)
         #except Exception as ex:
         #    self.cbLog("warning", "removeNodeMessages, cannot remove messages for {}. Type: {}, exception: {}".format(nodeID, type(ex), ex.args))
 
