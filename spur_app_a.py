@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-#CID = "CID249"  # Client ID Production
-CID = "CID157"  # Client ID Staging
+CID = "CID249"  # Client ID Production
+#CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
