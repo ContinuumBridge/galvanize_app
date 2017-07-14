@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-CID = "CID249"  # Client ID Production
-#CID = "CID157"  # Client ID Staging
+#CID = "CID249"  # Client ID Production
+CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -511,7 +511,8 @@ class App(CbApp):
         if self.includeReqMessage:
             self.findingRssiAddr = None
             self.includeReqMessage["rssi"] = rssi
-            self.client.send(self.includeReqMessage)
+            #self.client.send(self.includeReqMessage)
+            reactor.callLater(10, self.client.send, self.includeReqMessage)
             self.includeReqMessage = {}
         elif self.doingWakeup:
             self.doingWakeup = False
@@ -750,24 +751,26 @@ class App(CbApp):
         now = time.time()
         self.cbLog("debug", "monitor, nextWakeupTimes: {}, activeNodes: {}".format(self.nextWakeupTime, self.activeNodes))
         for m in self.activeNodes:
-            n = self.id2addr[m]
-            if n in list(self.nextWakeupTime):
-                if (now > self.nextWakeupTime[n]):
-                    self.cbLog("debug", "monitor, excluding {}, {}, nexWakeupTime: {}, time diff: {}".format(m, n, self.nextWakeupTime[n], \
-                        now-self.nextWakeupTime[n]))
-                    self.cbLog("debug", "monitor, activeNodes: {}".format(self.activeNodes))
-                    msg = {
-                        "function": "exclude_req",
-                        "source": self.addr2id[n]
-                    }
-                    self.client.send(msg)
-                    del self.nextWakeupTime[n]
+            try:
+                n = self.id2addr[m]
+                if n in list(self.nextWakeupTime):
+                    if (now > self.nextWakeupTime[n]):
+                        self.cbLog("debug", "monitor, excluding {}, {}, nexWakeupTime: {}, time diff: {}".format(m, n, self.nextWakeupTime[n], \
+                            now-self.nextWakeupTime[n]))
+                        self.cbLog("debug", "monitor, activeNodes: {}".format(self.activeNodes))
+                        msg = {
+                            "function": "exclude_req",
+                            "source": self.addr2id[n]
+                        }
+                        self.client.send(msg)
+                        del self.nextWakeupTime[n]
+            except Exception as ex:
+                self.cbLog("warning", "monitor, problem with node {}. Type: {}, exception: {}".format(m, type(ex), ex.args))
         reactor.callLater(MONITOR_INTERVAL, self.monitor)
 
     def removeNodeMessages(self, nodeID):
         #Remove all queued messages and reference to a node if we get a new include_req
-        if True:
-        #try:
+        try:
             self.cbLog("debug", "removeNodeMessages, nodeID: {}".format(nodeID))
             self.cbLog("debug", "removeNodeMessages, messageQueue: {}".format(self.messageQueue))
             if nodeID in self.id2addr:
@@ -792,8 +795,8 @@ class App(CbApp):
                 self.activeNodes.remove(nodeID)
             if nodeID in self.configuring:
                 self.configuring.remove(nodeID)
-        #except Exception as ex:
-        #    self.cbLog("warning", "removeNodeMessages, cannot remove messages for {}. Type: {}, exception: {}".format(nodeID, type(ex), ex.args))
+        except Exception as ex:
+            self.cbLog("warning", "removeNodeMessages, cannot remove messages for {}. Type: {}, exception: {}".format(nodeID, type(ex), ex.args))
 
     def sendQueued(self, beacon):
         """
