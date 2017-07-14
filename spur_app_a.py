@@ -518,8 +518,8 @@ class App(CbApp):
             self.doingWakeup = False
             nodeID = self.addr2id[self.findingRssiAddr]
             msg = self.formatRadioMessage(self.findingRssiAddr, "ack", self.setWakeup(self.findingRssiAddr))
+            self.queueRadio(msg, self.findingRssiAddr, "ack")
             self.findingRssiAddr = None
-            self.queueRadio(msg, nodeID, "ack")
             msg = {
                 "function": "woken_up",
                 "source": nodeID,
