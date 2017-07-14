@@ -525,6 +525,7 @@ class App(CbApp):
                 "source": nodeID,
                 "rssi": rssi
             }
+            self.cbLog("debug", "onRSSI, doingWakeup, sending message to client: {}".format(msg))
             self.client.send(msg)
         else:
             msg = {
@@ -535,7 +536,7 @@ class App(CbApp):
             if self.findingRssiAddr in self.addr2id:
                 msg["id"] = self.addr2id[self.findingRssiAddr]
             self.findingRssiAddr = None
-            self.cbLog("debug", "sending message to client: {}".format(msg))
+            self.cbLog("debug", "onRSSI, not doingWakeup, sending message to client: {}".format(msg))
             reactor.callLater(3, self.client.send, msg)  # We want rssi messages to arrive at spur_clients after wakeups
 
     def onRadioMessage(self, message):
@@ -548,13 +549,13 @@ class App(CbApp):
             except Exception as ex:
                 self.cbLog("warning", "onRadioMessage. Malformed radio message. Type: {}, exception: {}".format(type(ex), ex.args))
                 return
-            self.cbLog("debug", "Rx: destination: " + str("{0:#0{1}X}".format(destination,6)))
+            self.cbLog("debug", "onRadioMessage, Rx: destination: " + str("{0:#0{1}X}".format(destination,6)))
             source, hexFunction = struct.unpack(">HB", message[2:5])
             try:
                 function = (key for key,value in FUNCTIONS.items() if value==hexFunction).next()
             except:
                 function = "undefined"
-            self.cbLog("debug", "source: {}, function: {}".format(source, function))
+            self.cbLog("debug", "onRadioMessage, source: {}, function: {}".format(source, function))
             if function == "woken_up":
                 if source in self.addr2id:
                     if self.addr2id[source] not in self.activeNodes:
