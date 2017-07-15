@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-#CID = "CID249"  # Client ID Production
-CID = "CID157"  # Client ID Staging
+CID = "CID249"  # Client ID Production
+#CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -511,8 +511,8 @@ class App(CbApp):
         if self.includeReqMessage:
             self.findingRssiAddr = None
             self.includeReqMessage["rssi"] = rssi
-            #self.client.send(self.includeReqMessage)
-            reactor.callLater(10, self.client.send, self.includeReqMessage)
+            self.client.send(self.includeReqMessage)
+            #reactor.callLater(10, self.client.send, self.includeReqMessage)
             self.includeReqMessage = {}
         elif self.doingWakeup:
             self.doingWakeup = False
