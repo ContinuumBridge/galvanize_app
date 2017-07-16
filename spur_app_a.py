@@ -440,11 +440,11 @@ class App(CbApp):
                 segment = struct.pack("cc", "E", "S") 
                 formatMessage += segment
             if not appValue:  # Ensures that app_value is sent last
-                self.cbLog("debug", "Sending to node: {}".format(formatMessage))
-                self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
-                wakeup = 0
-                msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
                 if not reassign:
+                    self.cbLog("debug", "Sending to node: {}".format(formatMessage))
+                    self.cbLog("debug", "Sending to node: " + str(formatMessage.encode("hex")))
+                    wakeup = 0
+                    msg = self.formatRadioMessage(nodeAddr, "config", wakeup, formatMessage)
                     self.queueRadio(msg, int(nodeAddr), "config")
             else:
                 appValue = False
