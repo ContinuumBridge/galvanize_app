@@ -1,9 +1,9 @@
 {
     "exe": "spur_app.py", 
     "description": "Spur Button App", 
-    "url": "https://github.com/ContinuumBridge/spur_app/archive/v1.3.3.tar.gz", 
+    "url": "https://github.com/ContinuumBridge/spur_app/archive/v1.3.4.tar.gz", 
     "app_resource": "/api/bridge/v1/app/37", 
-    "version": "1.3.3", 
+    "version": "1.3.4", 
     "provider": "ContinuumBridge", 
     "name": "Spur App"
 }

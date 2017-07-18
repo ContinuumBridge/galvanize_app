@@ -677,7 +677,11 @@ class App(CbApp):
         self.cbLog("debug", "setWakeup, nodeAddr: {}, id: {}, buttonState: {}".format(nodeAddr, nodeID, self.buttonState))
         self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.configuring: " + str(self.configuring))
         self.cbLog("debug", "setWakeup, requestBatteries: {}".format(self.requestBatteries))
-        if (nodeAddr in self.nodeConfig) or (nodeID in self.configuring) or (nodeAddr in self.requestBatteries):
+        wakeup0 = False
+        if (nodeAddr in self.nodeConfig):
+            if "reassign" not in self.nodeConfig[nodeAddr]:
+                wakeup0 = True  # Only set wakeup = 0 if this is not a reassign because config is not sent to button on a reassign
+        if wakeup0 or (nodeID in self.configuring) or (nodeAddr in self.requestBatteries):
             wakeup = 0;
             self.nextWakeupTime[nodeAddr] = int(time.time() + 720)  # Time to allow before excluding when configuring
             self.cbLog("debug", "setWakeup 0 (1) for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
