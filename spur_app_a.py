@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-CID = "CID249"  # Client ID Production
-#CID = "CID157"  # Client ID Staging
+#CID = "CID249"  # Client ID Production
+CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -523,6 +523,7 @@ class App(CbApp):
             msg = {
                 "function": "woken_up",
                 "source": nodeID,
+                "time_stamp": int(time.time()),
                 "rssi": rssi
             }
             self.cbLog("debug", "onRSSI, doingWakeup, sending message to client: {}".format(msg))
@@ -531,6 +532,7 @@ class App(CbApp):
             msg = {
                 "function": "rssi",
                 "address": self.findingRssiAddr,
+                "time_stamp": int(time.time()),
                 "rssi": rssi
             }
             if self.findingRssiAddr in self.addr2id:
@@ -589,6 +591,7 @@ class App(CbApp):
                     "function": "include_req",
                     "include_req": nodeID,
                     "version": version,
+                    "time_stamp": int(time.time()),
                     "rssi": None
                 }
                 self.findRSSI(nodeID)
