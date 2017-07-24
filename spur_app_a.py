@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-#CID = "CID249"  # Client ID Production
-CID = "CID157"  # Client ID Staging
+CID = "CID249"  # Client ID Production
+#CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -512,7 +512,7 @@ class App(CbApp):
             self.findingRssiAddr = None
             self.includeReqMessage["rssi"] = rssi
             self.client.send(self.includeReqMessage)
-            #reactor.callLater(10, self.client.send, self.includeReqMessage)
+            #reactor.callLater(130, self.client.send, self.includeReqMessage)
             self.includeReqMessage = {}
         elif self.doingWakeup:
             self.doingWakeup = False
@@ -680,6 +680,8 @@ class App(CbApp):
         self.cbLog("debug", "setWakeup, nodeAddr: {}, id: {}, buttonState: {}".format(nodeAddr, nodeID, self.buttonState))
         self.cbLog("debug", "setWakeup, self.nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)) + ", self.configuring: " + str(self.configuring))
         self.cbLog("debug", "setWakeup, requestBatteries: {}".format(self.requestBatteries))
+        self.cbLog("debug", "setWakeup, buttonState: {}".format(self.buttonState))
+        self.cbLog("debug", "setWakeup, wakeupCount: {}".format(self.wakeupCount))
         wakeup0 = False
         if (nodeAddr in self.nodeConfig):
             if "reassign" not in self.nodeConfig[nodeAddr]:
@@ -698,10 +700,14 @@ class App(CbApp):
                     break
             if wakeup == -1:
                 try:
-                    self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
-                    wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
-                    self.nextWakeupTime[nodeAddr] = int(time.time() + wakeup*2*GRACE_TIME_MULT)
-                    self.cbLog("debug", "setWakeup (-1) for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
+                    if nodeAddr in self.buttonState:
+                        self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
+                        wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
+                        self.nextWakeupTime[nodeAddr] = int(time.time() + wakeup*2*GRACE_TIME_MULT)
+                        self.cbLog("debug", "setWakeup (-1) for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
+                    else:
+                        wakeup = 7200
+                        self.cbLog("info", "setWakeup, no buttonState for {}. Setting wakeup to 7200".format(nodeAddr))
                 except Exception as ex:
                     self.cbLog("warning", "setWakeup, problem setting next wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
                     wakeup = 7200
@@ -710,9 +716,10 @@ class App(CbApp):
                     except Exception as ex:
                         self.cbLog("warning", "setWakeup, problem setting nextWakeupTime for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
                 try:
-                    self.wakeupCount[nodeAddr] += 1
-                    if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
-                        self.wakeupCount[nodeAddr] = len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]) - 1
+                    if nodeAddr in self.buttonState:
+                        self.wakeupCount[nodeAddr] += 1
+                        if self.wakeupCount[nodeAddr] >=  len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]):
+                            self.wakeupCount[nodeAddr] = len(self.wakeups[nodeAddr][self.buttonState[nodeAddr]]) - 1
                 except Exception as ex:
                     self.cbLog("warning", "setWakeup, problem incrementing wakeup for {}. Type: {}. Exception: {}".format(nodeAddr, type(ex), ex.args))
         if (nodeAddr in self.nodeConfig) and (nodeAddr not in self.sendingConfig):
