@@ -55,6 +55,7 @@ Y_STARTS = (
 SPUR_ADDRESS        = int(CB_BID[3:])
 CHECK_START_DELAY   = 10
 CHECK_INTERVAL      = 900
+FAST_CHECK_INTERVAL = 60
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
@@ -154,7 +155,10 @@ class App(CbApp):
         self.cbLog("debug", "checkConnected, connected: {}".format(self.connected))
         toClient = {"status": "init"}
         self.client.send(toClient)
-        reactor.callLater(CHECK_INTERVAL, self.checkConnected)
+        if self.connected:
+            reactor.callLater(CHECK_INTERVAL, self.checkConnected)
+        else:
+            reactor.callLater(FAST_CHECK_INTERVAL, self.checkConnected)
 
     def onConcMessage(self, message):
         self.client.receive(message)
