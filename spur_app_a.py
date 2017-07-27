@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-CID = "CID249"  # Client ID Production
-#CID = "CID157"  # Client ID Staging
+#CID = "CID249"  # Client ID Production
+CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -53,7 +53,8 @@ Y_STARTS = (
 );
 
 SPUR_ADDRESS        = int(CB_BID[3:])
-CHECK_INTERVAL      = 1800
+CHECK_START_DELAY   = 10
+CHECK_INTERVAL      = 900
 TIME_TO_FIRST_CHECK = 60               # Time from start to sending first status message
 GRANT_ADDRESS       = 0xBB00
 PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pressed state, seconds/2
@@ -74,7 +75,6 @@ class App(CbApp):
         self.addr2id            = {}          # Node address to node if mapping
         self.addr2id[0]         = 0
         self.activeNodes        = []
-        self.radioOn            = True
         self.messageQueue       = []
         self.sentTo             = []
         self.includeGrants      = []
@@ -93,6 +93,8 @@ class App(CbApp):
         self.beaconRunning      = False
         self.findingRssiAddr    = None
         self.doingWakeup        = False
+        self.lastClientMessage  = time.time()
+        self.connected          = False
         #self.testCount         = 0           # Test use only
         #self.ackCount          = 0           # Used purely for test of nack
 
@@ -149,6 +151,7 @@ class App(CbApp):
         self.sendManagerMessage(msg)
 
     def checkConnected(self):
+        self.cbLog("debug", "checkConnected, connected: {}".format(self.connected))
         toClient = {"status": "init"}
         self.client.send(toClient)
         reactor.callLater(CHECK_INTERVAL, self.checkConnected)
@@ -159,6 +162,8 @@ class App(CbApp):
     def onClientMessage(self, message):
         try:
             self.cbLog("debug", "onClientMessage, message: " + str(json.dumps(message, indent=4)))
+            self.connected = True
+            self.lastClientMessage = time.time()
             if "function" in message:
                 if message["function"] == "include_grant":
                     try:
@@ -542,8 +547,8 @@ class App(CbApp):
             reactor.callLater(3, self.client.send, msg)  # We want rssi messages to arrive at spur_clients after wakeups
 
     def onRadioMessage(self, message):
-        if self.radioOn:
-            self.cbLog("debug", "onRadioMessage, length: {}".format(len(message)))
+        self.cbLog("debug", "onRadioMessage, connected: {}".format(self.connected))
+        if self.connected:
             if len(message) < 6:
                 return
             try:
@@ -703,6 +708,8 @@ class App(CbApp):
                     if nodeAddr in self.buttonState:
                         self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
                         wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
+                        if wakeup < 300:
+                            wakeup = 300  # Prevents problems with delays in sending, etc, for shorter wakeup times
                         self.nextWakeupTime[nodeAddr] = int(time.time() + wakeup*2*GRACE_TIME_MULT)
                         self.cbLog("debug", "setWakeup (-1) for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
                     else:
@@ -781,6 +788,9 @@ class App(CbApp):
                         del self.nextWakeupTime[n]
             except Exception as ex:
                 self.cbLog("warning", "monitor, problem with node {}. Type: {}, exception: {}".format(m, type(ex), ex.args))
+        if now - self.lastClientMessage > CHECK_INTERVAL + 120:
+            self.connected = False
+            self.cbLog("warning", "monitor, not heard from client within check interval, disconnecting")
         reactor.callLater(MONITOR_INTERVAL, self.monitor)
 
     def removeNodeMessages(self, nodeID):
@@ -817,6 +827,8 @@ class App(CbApp):
         """
         In frames where a beacon is sent, don't send anything else apart from acks.
         """
+        if not self.connected:
+            return
         if self.findingRssiAddr:
             return
         now = time.time()
@@ -953,7 +965,7 @@ class App(CbApp):
         self.client.cbLog = self.cbLog
         self.saveFile = CB_CONFIG_DIR + self.id + ".savestate"
         self.loadSaved()
-        reactor.callLater(CHECK_INTERVAL, self.checkConnected)
+        reactor.callLater(CHECK_START_DELAY, self.checkConnected)
         self.cbLog("info", "CID: {}".format(CID))
         self.setState("starting")
 
