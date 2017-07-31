@@ -225,8 +225,10 @@ class App(CbApp):
                             self.configuring.append(nodeID)  # Causes a start to be sent to node on complete config update
                             # Because buttons don't send an alert on entering state zero after an auto-reset
                             if "reassign" in message["config"]:
+                                self.buttonState[nodeAddr] = 0  # Needed to get a wakeup value that's not the default
                                 self.cbLog("debug", "Config message, not sending alert 0 because it's a reassign")
                             else:
+                                self.buttonState[nodeAddr] = 0
                                 msg = {
                                     "function": "alert",
                                     "type": 0,
@@ -718,6 +720,7 @@ class App(CbApp):
                 try:
                     if nodeAddr in self.buttonState:
                         self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
+                        self.cbLog("debug", "setWakeup, wakeups: {}".format(self.wakeups))
                         wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
                         if wakeup < 300:
                             timeOut = 300  # Prevents problems with delays in sending, etc, for shorter wakeup times
