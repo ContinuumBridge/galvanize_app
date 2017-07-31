@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-#CID = "CID249"  # Client ID Production
-CID = "CID157"  # Client ID Staging
+CID = "CID249"  # Client ID Production
+#CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -76,6 +76,7 @@ class App(CbApp):
         self.addr2id            = {}          # Node address to node if mapping
         self.addr2id[0]         = 0
         self.activeNodes        = []
+        self.excludedNodes      = []
         self.messageQueue       = []
         self.sentTo             = []
         self.includeGrants      = []
@@ -114,6 +115,7 @@ class App(CbApp):
             "id2addr": self.id2addr,
             "addr2id": self.addr2id,
             "activeNodes": self.activeNodes,
+            "excludedNodes": self.excludedNodes,
             "buttonState": self.buttonState,
             "wakeupCount": self.wakeupCount,
             "wakeups": self.wakeups
@@ -135,6 +137,7 @@ class App(CbApp):
                 self.id2addr = state["id2addr"]
                 self.addr2id = state["addr2id"]
                 self.activeNodes = state["activeNodes"]
+                self.excludedNodes = state["exclduedNodes"]
                 self.buttonState = state["buttonState"]
                 self.wakeupCount = state["wakeupCount"]
                 self.wakeups = state["wakeups"]
@@ -177,6 +180,8 @@ class App(CbApp):
                         self.cbLog("debug", "{} added to active_nodes: {}".format(nodeID, self.activeNodes))
                         if nodeID not in self.activeNodes:
                             self.activeNodes.append(nodeID)
+                        if nodeID in self.excludedNodes:
+                            self.excludedNodes.remove(nodeID)
                         self.id2addr[nodeID] = addr
                         self.addr2id[addr] = nodeID
                         self.nextWakeupTime[addr] = int(time.time() + 720)  # To pevent spurious exlude_reqs
@@ -268,6 +273,8 @@ class App(CbApp):
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
                                 self.removeNodeMessages(nodeID)
+                                if nodeID in self.excludedNodes:
+                                    self.excludedNodes.remove(nodeID)
                                 self.doingWakeup = False # In case we were doing this at the time (could be quite likely)
                                 self.cbLog("info", "{} deactivated this bridge and doingWakeup set to false".format(nodeID))
                         self.save()
@@ -784,12 +791,14 @@ class App(CbApp):
                         self.cbLog("debug", "monitor, excluding {}, {}, nexWakeupTime: {}, time diff: {}".format(m, n, self.nextWakeupTime[n], \
                             now-self.nextWakeupTime[n]))
                         self.cbLog("debug", "monitor, activeNodes: {}".format(self.activeNodes))
-                        msg = {
-                            "function": "exclude_req",
-                            "source": self.addr2id[n]
-                        }
-                        self.client.send(msg)
-                        del self.nextWakeupTime[n]
+                        if m not in self.excludedNodes:
+                            msg = {
+                                "function": "exclude_req",
+                                "source": self.addr2id[n]
+                            }
+                            self.client.send(msg)
+                            self.excludedNodes.append(m)
+                            del self.nextWakeupTime[n]
             except Exception as ex:
                 self.cbLog("warning", "monitor, problem with node {}. Type: {}, exception: {}".format(m, type(ex), ex.args))
         if now - self.lastClientMessage > CHECK_INTERVAL + 120:
@@ -822,6 +831,8 @@ class App(CbApp):
                     del self.wakeupCount[addr]
             if nodeID in self.activeNodes:
                 self.activeNodes.remove(nodeID)
+            if nodeID in self.excludedNodes:
+                self.excludedNodes.remove(nodeID)
             if nodeID in self.configuring:
                 self.configuring.remove(nodeID)
         except Exception as ex:
