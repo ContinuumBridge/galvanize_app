@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-CID = "CID249"  # Client ID Production
-#CID = "CID157"  # Client ID Staging
+#CID = "CID249"  # Client ID Production
+CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -720,8 +720,10 @@ class App(CbApp):
                         self.cbLog("debug", "setWakeup buttonState: {}, wakeupCount: {}".format(self.buttonState[nodeAddr], self.wakeupCount[nodeAddr]))
                         wakeup = self.wakeups[nodeAddr][self.buttonState[nodeAddr]][self.wakeupCount[nodeAddr]]
                         if wakeup < 300:
-                            wakeup = 300  # Prevents problems with delays in sending, etc, for shorter wakeup times
-                        self.nextWakeupTime[nodeAddr] = int(time.time() + wakeup*2*GRACE_TIME_MULT)
+                            timeOut = 300  # Prevents problems with delays in sending, etc, for shorter wakeup times
+                        else:
+                            timeOut = wakeup
+                        self.nextWakeupTime[nodeAddr] = int(time.time() + timeOut*2*GRACE_TIME_MULT)
                         self.cbLog("debug", "setWakeup (-1) for {}, now: {}, next wakeup: {}".format(nodeID, time.time(), self.nextWakeupTime[nodeAddr]))
                     else:
                         wakeup = 7200
