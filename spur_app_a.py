@@ -137,10 +137,13 @@ class App(CbApp):
                 self.id2addr = state["id2addr"]
                 self.addr2id = state["addr2id"]
                 self.activeNodes = state["activeNodes"]
-                self.excludedNodes = state["exclduedNodes"]
                 self.buttonState = state["buttonState"]
                 self.wakeupCount = state["wakeupCount"]
                 self.wakeups = state["wakeups"]
+                try:
+                    self.excludedNodes = state["exclduedNodes"]
+                except:
+                    self.cbLog("info", "No excludedNodes in saved state")
         except Exception as ex:
             self.cbLog("warning", "Problem loading saved state. Exception. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
 
