@@ -530,37 +530,45 @@ class App(CbApp):
     def onRSSI(self, rssi):
         self.cbLog("debug", "RSSI for {}: {}".format(self.findingRssiAddr, rssi))
         if self.includeReqMessage:
-            self.findingRssiAddr = None
-            self.includeReqMessage["rssi"] = rssi
-            self.client.send(self.includeReqMessage)
-            #reactor.callLater(130, self.client.send, self.includeReqMessage)
-            self.includeReqMessage = {}
+            try:
+                self.includeReqMessage["rssi"] = rssi
+                self.client.send(self.includeReqMessage)
+                #reactor.callLater(130, self.client.send, self.includeReqMessage)  # For testing
+                self.includeReqMessage = {}
+            except Exception as ex:
+                self.cbLog("warning", "onRSSI, problem with RSSI for includeReqMessage: Type: {}, exception: {}".format(type(ex), ex.args))
+                self.includeReqMessage = {}
         elif self.doingWakeup:
             self.doingWakeup = False
-            nodeID = self.addr2id[self.findingRssiAddr]
-            msg = self.formatRadioMessage(self.findingRssiAddr, "ack", self.setWakeup(self.findingRssiAddr))
-            self.queueRadio(msg, self.findingRssiAddr, "ack")
-            self.findingRssiAddr = None
-            msg = {
-                "function": "woken_up",
-                "source": nodeID,
-                "time_stamp": int(time.time()),
-                "rssi": rssi
-            }
-            self.cbLog("debug", "onRSSI, doingWakeup, sending message to client: {}".format(msg))
-            self.client.send(msg)
+            try:
+                nodeID = self.addr2id[self.findingRssiAddr]
+                msg = self.formatRadioMessage(self.findingRssiAddr, "ack", self.setWakeup(self.findingRssiAddr))
+                self.queueRadio(msg, self.findingRssiAddr, "ack")
+                msg = {
+                    "function": "woken_up",
+                    "source": nodeID,
+                    "time_stamp": int(time.time()),
+                    "rssi": rssi
+                }
+                self.cbLog("debug", "onRSSI, doingWakeup, sending message to client: {}".format(msg))
+                self.client.send(msg)
+            except Exception as ex:
+                self.cbLog("warning", "onRSSI, problem with doingWakeup: Type: {}, exception: {}".format(type(ex), ex.args))
         else:
-            msg = {
-                "function": "rssi",
-                "address": self.findingRssiAddr,
-                "time_stamp": int(time.time()),
-                "rssi": rssi
-            }
-            if self.findingRssiAddr in self.addr2id:
-                msg["id"] = self.addr2id[self.findingRssiAddr]
-            self.findingRssiAddr = None
-            self.cbLog("debug", "onRSSI, not doingWakeup, sending message to client: {}".format(msg))
-            reactor.callLater(3, self.client.send, msg)  # We want rssi messages to arrive at spur_clients after wakeups
+            try:
+                msg = {
+                    "function": "rssi",
+                    "address": self.findingRssiAddr,
+                    "time_stamp": int(time.time()),
+                    "rssi": rssi
+                }
+                if self.findingRssiAddr in self.addr2id:
+                    msg["id"] = self.addr2id[self.findingRssiAddr]
+                self.cbLog("debug", "onRSSI, not doingWakeup, sending message to client: {}".format(msg))
+                reactor.callLater(3, self.client.send, msg)  # We want rssi messages to arrive at spur_clients after wakeups
+            except Exception as ex:
+                self.cbLog("warning", "onRSSI, problem processing RSSI: Type: {}, exception: {}".format(type(ex), ex.args))
+        self.findingRssiAddr = None
 
     def onRadioMessage(self, message):
         self.cbLog("debug", "onRadioMessage, connected: {}".format(self.connected))
