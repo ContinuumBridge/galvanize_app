@@ -10,8 +10,8 @@ Byte 0: allocated by bridge that node first connected to
 
 """
 
-CID = "CID249"  # Client ID Production
-#CID = "CID157"  # Client ID Staging
+#CID = "CID249"  # Client ID Production
+CID = "CID157"  # Client ID Staging
 
 import sys
 #reload(sys)
@@ -62,6 +62,7 @@ PRESSED_WAKEUP      = 5*60              # How long node should sleep for in pres
 BEACON_START_DELAY  = 5                 # Delay before starting to send beacons to allow other things to start
 GRACE_TIME_MULT     = 1.2               # Time to wait after we should have heard from node before reporting it missing
 MONITOR_INTERVAL    = 10                # Check to see if nodes are overdue in waking up at this interval
+FAILS_BEFORE_REMOVE = 9                 # App tries to send to a button this many times before removing all messages for that button
 config              = {
                         "nodes": [ ]
 }
@@ -271,9 +272,12 @@ class App(CbApp):
                         nodeID = int(message["id"])
                         if int(message["bid"][3:]) == SPUR_ADDRESS:
                             if nodeID not in self.activeNodes:
-                                self.cbLog("info", "{} now active on this bridge".format(nodeID))
+                                self.cbLog("info", "assign_node {} now active on this bridge".format(nodeID))
                                 self.activeNodes.append(nodeID)
                                 self.nextWakeupTime[self.id2addr[nodeID]] = time.time() + 86396  # Just in case config not received - just short of one day
+                                self.save()
+                            else:
+                                self.cbLog("info", "assign_node {} assigned to this bridge, but was already active on it".format(nodeID))
                         else:
                             if nodeID in self.activeNodes:
                                 self.activeNodes.remove(nodeID)
@@ -282,7 +286,7 @@ class App(CbApp):
                                     self.excludedNodes.remove(nodeID)
                                 self.doingWakeup = False # In case we were doing this at the time (could be quite likely)
                                 self.cbLog("info", "{} deactivated this bridge and doingWakeup set to false".format(nodeID))
-                        self.save()
+                                self.save()
                     except Exception as ex:
                         self.cbLog("warning", "onClientMessage, problem processing assign_node. Type: {}. Exception: {}".format(type(ex), ex.args))
                 elif message["function"] == "reset":
@@ -829,11 +833,12 @@ class App(CbApp):
             self.cbLog("debug", "removeNodeMessages, messageQueue: {}".format(self.messageQueue))
             if nodeID in self.id2addr:
                 addr = self.id2addr[nodeID]
-                del self.id2addr[nodeID]
                 for m in list(self.messageQueue):
                     if m["destination"] == addr:
                         self.messageQueue.remove(m)
                         self.cbLog("debug", "removeNodeMessages: " + str(nodeID) + ", removed: " + m["function"])
+                if addr in self.sendingConfig:
+                    del self.sendingConfig[addr]
                 if addr in self.nodeConfig:
                     del self.nodeConfig[addr]
                 if addr in self.buttonState:
@@ -845,6 +850,7 @@ class App(CbApp):
                     del self.addr2id[addr]
                 if addr in self.wakeupCount:
                     del self.wakeupCount[addr]
+                del self.id2addr[nodeID]
             if nodeID in self.activeNodes:
                 self.activeNodes.remove(nodeID)
             if nodeID in self.excludedNodes:
@@ -885,7 +891,7 @@ class App(CbApp):
                     self.cbLog("debug", "sendQueued: Tx: " + m["function"] + " to " + str(m["destination"]) + ", attempt " + str(m["attempt"]))
                     sentLength += m["message"]["length"]
                 elif (now - m["sentTime"] > 9) and (m["destination"] not in sentAck) and (m["attempt"] > 0) and not beacon:
-                    if m["attempt"] > 5:
+                    if m["attempt"] > FAILS_BEFORE_REMOVE:
                         self.sentTo.remove(m["destination"])
                         self.removeNodeMessages(self.addr2id[m["destination"]])
                         removed = True
