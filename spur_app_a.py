@@ -265,6 +265,13 @@ class App(CbApp):
                         self.save()
                     except Exception as ex:
                         self.cbLog("warning", "onClientMessage, problem processing update_address. Type: {}. Exception: {}".format(type(ex), ex.args))
+                elif message["function"] == "remove_button":
+                    try:
+                        self.cbLog("info", "remove_button: {}".format(message["id"]))
+                        self.removeNodeMessages(message["id"])
+                        self.save()
+                    except Exception as ex:
+                        self.cbLog("warning", "onClientMessage, problem processing remove_button. Type: {}. Exception: {}".format(type(ex), ex.args))
                 elif message["function"] == "assign_node":
                     try:
                         self.cbLog("debug", "assign_node, node: {}, bridge: {}".format(message["id"], message["bid"]))
