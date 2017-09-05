@@ -663,11 +663,10 @@ class App(CbApp):
                             else:
                                 sendAlert = True
                         else:
-                            self.lastAlertType[source] = alertType
                             sendAlert = True
-                            self.cbLog("debug", "Rx, added {} to lastAlertType - alertType {}".format(source, alertType))
                         if sendAlert:
                             self.lastAlertType[source] = alertType
+                            self.cbLog("debug", "Rx, added {} to lastAlertType - alertType {}".format(source, alertType))
                             if (alertType & 0xFF00) == 0x0200:
                                 battery_level = ((alertType & 0xFF) * 0.235668)/10
                                 msg = {
