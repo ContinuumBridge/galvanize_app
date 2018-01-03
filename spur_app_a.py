@@ -231,7 +231,7 @@ class App(CbApp):
                             if "reassign" in message["config"]:
                                 self.buttonState[nodeAddr] = 0  # Needed to get a wakeup value that's not the default
                                 self.cbLog("debug", "Config message, not sending alert 0 because it's a reassign")
-                            else:
+                            elif "update" not in message["config"]:  # Don't send alert 0 if this is a display update
                                 self.buttonState[nodeAddr] = 0
                                 msg = {
                                     "function": "alert",
@@ -655,7 +655,7 @@ class App(CbApp):
                                 self.cbLog("warning", "Unknown alert type received. Type: " + str(type(ex)) + "exception: " +  str(ex.args))
                         hexPayload = payload.encode("hex")
                         self.cbLog("debug", "Rx: hexPayload: " + str(hexPayload) + ", length: " + str(len(payload)))
-                        self.cbLog("debug", "Rx, alert, type: {}".format(alertType & 0xFF00))
+                        self.cbLog("debug", "Rx, alert, type: {}".format(alertType))
                         if source in self.lastAlertType:
                             if alertType == self.lastAlertType[source]:
                                 self.cbLog("debug", "Tx, alertType {}, lastAlertType {}, not sending to client".format(alertType, self.lastAlertType[source]))
