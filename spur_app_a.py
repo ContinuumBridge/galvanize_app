@@ -92,6 +92,7 @@ class App(CbApp):
         self.requestBatteries   = []
         self.nextWakeupTime     = {}
         self.lastAlertType      = {}
+        self.alert0AfterStart   = []
         self.beaconInterval     = 6
         self.beaconRunning      = False
         self.findingRssiAddr    = None
@@ -232,14 +233,9 @@ class App(CbApp):
                                 self.buttonState[nodeAddr] = 0  # Needed to get a wakeup value that's not the default
                                 self.cbLog("debug", "Config message, not sending alert 0 because it's a reassign")
                             elif "update" not in message["config"]:  # Don't send alert 0 if this is a display update
+                                self.alert0AfterStart.append(nodeAddr)  # Alert 0 will be sent to client after start has been ack'd
                                 self.buttonState[nodeAddr] = 0
-                                msg = {
-                                    "function": "alert",
-                                    "type": 0,
-                                    "source": nodeID
-                                }
-                                self.client.send(msg)
-                                self.cbLog("debug", "Config message, sending alert 0")
+                                self.cbLog("debug", "onClientMessage, {} added to alter0AfterStart".format(self.alert0AfterStart))
                         self.cbLog("debug", "onClentMessage, nodeConfig: " + str(json.dumps(self.nodeConfig, indent=4)))
                     except Exception as ex:
                         self.cbLog("warning", "onClientMessage, problem processing config. Type: {}. Exception: {}".format(type(ex), ex.args))
@@ -604,13 +600,6 @@ class App(CbApp):
                         self.findRSSI(source)
                 else:
                     self.findRSSI(source)
-            """
-            if (function == "include_req" and destination != SPUR_ADDRESS):
-                payload = message[10:16]
-                (nodeID, version, rssi) = struct.unpack(">Ibb", payload)
-                self.cbLog("debug", "include_req for a different bridge, {}, nodeID: {}".format(destination, nodeID))
-                self.findRSSI(source, nodeID)
-            """
             if function == "include_req":
                 self.cbLog("debug", "Rx: " + function + " from button: " + str("{0:#0{1}x}".format(source,6)))
                 length = struct.unpack(">b", message[9])[0]
@@ -784,6 +773,17 @@ class App(CbApp):
             for m in list(self.messageQueue):
                 if m["destination"] == source:
                     if m["attempt"] > 0:
+                        #self.cbLog("debug", "onAck, function: {}, alert0AfterStart: {}".format(m["function"], self.alert0AfterStart))
+                        if m["function"] == "start":
+                            if source in self.alert0AfterStart:
+                                msg = {
+                                    "function": "alert",
+                                    "type": 0,
+                                    "source": self.addr2id[source]
+                                }
+                                self.client.send(msg)
+                                self.alert0AfterStart.remove(source)
+                                self.cbLog("debug", "onAck, start message acknowledged, sending alert 0 to client")
                         self.cbLog("debug", "onAck, removing message: " + m["function"] + " for: " + str(source) + ", id:" + str(self.addr2id[source]))
                         self.messageQueue.remove(m)
                         self.sentTo.remove(source)
